@@ -1,5 +1,6 @@
-textflask
+flask
 flask-mysqldb
 werkzeug
 gunicorn
 python-dotenv
+
