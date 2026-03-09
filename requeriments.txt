@@ -1,0 +1,5 @@
+textflask==3.0.3
+flask-mysqldb==2.0.0
+werkzeug==3.0.3
+gunicorn==23.0.0
+python-dotenv==1.0.1

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Registro{% endblock %}
+
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center min-vh-100">
+    <div class="card shadow-sm p-4 w-100" style="max-width: 400px;">
+        <h2 class="h4 mb-4 text-center">Registro</h2>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label">Username</label>
+                <input type="text" name="username" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Contraseña</label>
+                <input type="password" name="password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Registrarse</button>
+        </form>
+        
+        <p class="text-center mt-3 small">
+            ¿Ya tienes cuenta? <a href="{{ url_for('login') }}">Inicia sesión</a>
+        </p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Gonzalo Pago{% endblock %}
+
+{% block content %}
+
+<div class="mb-4">
+    <h2 class="h3 mb-1">Dashboard</h2>
+    <p class="text-body-secondary small">Resumen financiero acumulado</p>
+</div>
+
+<!-- Mensajes flash -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="mb-4">
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- Tarjetas de referencia (semana y mes) -->
+<div class="row row-cols-1 row-cols-sm-2 row-cols-lg-4 g-3 g-md-4 mb-4 mb-md-5">
+    <div class="col">
+        <div class="card border-success shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <h6 class="card-subtitle text-success mb-1 small">Ingresos (7 días)</h6>
+                <h5 class="card-title mb-0 fw-semibold">${{ "%.2f"|format(weekly_income) }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-danger shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <h6 class="card-subtitle text-danger mb-1 small">Gastos (7 días)</h6>
+                <h5 class="card-title mb-0 fw-semibold">${{ "%.2f"|format(weekly_exp) }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-success shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <h6 class="card-subtitle text-success mb-1 small">Ingresos (mes actual)</h6>
+                <h5 class="card-title mb-0 fw-semibold">${{ "%.2f"|format(monthly_income) }}</h5>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card border-danger shadow-sm h-100">
+            <div class="card-body text-center py-3">
+                <h6 class="card-subtitle text-danger mb-1 small">Gastos (mes actual)</h6>
+                <h5 class="card-title mb-0 fw-semibold">${{ "%.2f"|format(monthly_exp) }}</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Balance total acumulado (principal) -->
+<div class="card shadow-lg border-primary mb-5 overflow-hidden">
+    <div class="card-body text-center py-5 py-md-5">
+        <h4 class="text-primary mb-3 fw-semibold fs-4">
+            Balance total acumulado
+        </h4>
+        
+        <h1 class="display-3 fw-bold mb-3 {% if total_balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+            ${{ "%.2f"|format(total_balance) }}
+        </h1>
+        
+        <div class="d-flex justify-content-center gap-4 gap-md-5 mb-4 flex-wrap">
+            <div>
+                <small class="text-body-secondary d-block">Ingresos totales</small>
+                <span class="fs-4 fw-bold text-success">${{ "%.2f"|format(total_income) }}</span>
+            </div>
+            <div>
+                <small class="text-body-secondary d-block">Gastos totales</small>
+                <span class="fs-4 fw-bold text-danger">${{ "%.2f"|format(total_exp) }}</span>
+            </div>
+        </div>
+
+        <span class="badge fs-5 px-4 py-2 {% if total_balance >= 0 %}bg-success{% else %}bg-danger{% endif %}">
+            {% if total_balance >= 0 %}Saldo positivo{% else %}Saldo negativo{% endif %}
+        </span>
+    </div>
+</div>
+
+<!-- Gráficos de torta -->
+<div class="row mt-5">
+    <!-- Gastos por categoría -->
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-danger-subtle text-danger fw-semibold">
+                <i class="bi bi-pie-chart-fill me-2"></i> Gastos por categoría
+            </div>
+            <div class="card-body p-4" style="min-height: 320px;">
+                {% if gastos_data and gastos_labels %}
+                    <canvas id="gastosPieChart"></canvas>
+                {% else %}
+                    <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                        <p>No hay gastos registrados aún</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Ingresos por categoría -->
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-success-subtle text-success fw-semibold">
+                <i class="bi bi-pie-chart-fill me-2"></i> Ingresos por fuente
+            </div>
+            <div class="card-body p-4" style="min-height: 320px;">
+                {% if ingresos_data and ingresos_labels %}
+                    <canvas id="ingresosPieChart"></canvas>
+                {% else %}
+                    <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                        <p>No hay ingresos registrados aún</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Script Chart.js -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const colores = [
+        '#dc3545', '#fd7e14', '#ffc107', '#198754',
+        '#0d6efd', '#6f42c1', '#d63384', '#20c997',
+        '#6610f2', '#adb5bd', '#17a2b8', '#e83e8c'
+    ];
+
+    // Gráfico de Gastos
+    {% if gastos_labels and gastos_data %}
+    new Chart(document.getElementById('gastosPieChart'), {
+        type: 'pie',
+        data: {
+            labels: {{ gastos_labels | tojson }},
+            datasets: [{
+                data: {{ gastos_data | tojson }},
+                backgroundColor: colores.slice(0, {{ gastos_labels|length }}),
+                borderColor: document.documentElement.getAttribute('data-bs-theme') === 'dark' 
+                    ? 'rgba(30,30,30,0.8)' 
+                    : 'rgba(255,255,255,0.8)',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: document.documentElement.getAttribute('data-bs-theme') === 'dark' 
+                            ? '#e0e0e0' : '#333'
+                    }
+                },
+                tooltip: { enabled: true }
+            }
+        }
+    });
+    {% endif %}
+
+    // Gráfico de Ingresos
+    {% if ingresos_labels and ingresos_data %}
+    new Chart(document.getElementById('ingresosPieChart'), {
+        type: 'pie',
+        data: {
+            labels: {{ ingresos_labels | tojson }},
+            datasets: [{
+                data: {{ ingresos_data | tojson }},
+                backgroundColor: colores.slice(0, {{ ingresos_labels|length }}),
+                borderColor: document.documentElement.getAttribute('data-bs-theme') === 'dark' 
+                    ? 'rgba(30,30,30,0.8)' 
+                    : 'rgba(255,255,255,0.8)',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: document.documentElement.getAttribute('data-bs-theme') === 'dark' 
+                            ? '#e0e0e0' : '#333'
+                    }
+                },
+                tooltip: { enabled: true }
+            }
+        }
+    });
+    {% endif %}
+});
+</script>
+
+{% endblock %}
