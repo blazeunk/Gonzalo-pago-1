@@ -13,6 +13,7 @@ supabase: Client = create_client(supabase_url, supabase_key)
 
 def obtener_contexto_financiero(user_id):
     try:
+        # Traemos datos con joins para las categorías
         res_g = supabase.table("gastos").select("*, categorias_gastos(nombre)").eq("user_id", user_id).execute()
         res_i = supabase.table("ingresos").select("*, categorias_ingresos(nombre)").eq("user_id", user_id).execute()
         
@@ -23,9 +24,13 @@ def obtener_contexto_financiero(user_id):
         sum_gastos = sum(float(g.get('monto', 0)) for g in gastos)
         balance = sum_ingresos - sum_gastos
         
+        # Combinamos ambas listas para el historial del dashboard si es necesario
+        todos_los_pagos = gastos + ingresos
+
         return {
             "total_income": sum_ingresos,
             "total_expenses": sum_gastos,
+            "total_exp": sum_gastos,  # <--- AGREGADO PARA EVITAR EL ERROR JINJA2
             "total_balance": balance,
             "weekly_income": sum_ingresos / 4,
             "monthly_income": sum_ingresos,
@@ -34,11 +39,18 @@ def obtener_contexto_financiero(user_id):
             "total_savings": max(0, balance),
             "gastos_lista": gastos,
             "ingresos_lista": ingresos,
+            "pagos": todos_los_pagos, # Para compatibilidad con tablas generales
             "user_email": session.get('email', 'Usuario')
         }
     except Exception as e:
         print(f"Error: {e}")
-        return {"total_income":0, "total_expenses":0, "total_balance":0, "gastos_lista":[], "ingresos_lista":[]}
+        return {
+            "total_income": 0, "total_expenses": 0, "total_exp": 0, 
+            "total_balance": 0, "weekly_income": 0, "monthly_income": 0,
+            "weekly_exp": 0, "monthly_exp": 0, "total_savings": 0,
+            "gastos_lista": [], "ingresos_lista": [], "pagos": [],
+            "user_email": "Usuario"
+        }
 
 @app.route('/')
 def index():
@@ -71,7 +83,8 @@ def register():
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
-    return render_template('dashboard.html', active_page='dashboard', **obtener_contexto_financiero(session['user_id']))
+    ctx = obtener_contexto_financiero(session['user_id'])
+    return render_template('dashboard.html', active_page='dashboard', **ctx)
 
 @app.route('/expenses')
 def pagina_gastos():
@@ -99,7 +112,7 @@ def agregar_gasto():
     return redirect(url_for('pagina_gastos'))
 
 @app.route('/add_income', methods=['POST'])
-def agregar_ingreso():
+def agregar_income():
     if 'user_id' not in session: return redirect(url_for('login'))
     supabase.table("ingresos").insert({
         "user_id": session['user_id'],
