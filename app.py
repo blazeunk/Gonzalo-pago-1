@@ -17,19 +17,19 @@ except Exception as e:
     supabase = None
 
 def obtener_contexto_financiero(user_id):
-    """Extrae datos de la tabla 'gastos' y prepara las variables para los HTML."""
     try:
-        # Usamos 'gastos' que es la tabla que Supabase detectó en tu proyecto
         res = supabase.table("gastos").select("*").eq("user_id", user_id).execute()
         datos = res.data or []
         
-        # Filtramos por columna 'estado' (asegúrate que existan 'pagado' y 'pendiente')
+        # Cálculos basados en la columna 'monto' y 'estado'
         sum_pagado = sum(float(p.get('monto', 0)) for p in datos if p.get('estado') == 'pagado')
         sum_pendiente = sum(float(p.get('monto', 0)) for p in datos if p.get('estado') == 'pendiente')
         
+        # Mapeamos todos los nombres posibles que tus HTML puedan pedir
         return {
-            "total_income": sum_pagado,      # Lo que ya entró
-            "total_expenses": sum_pendiente,  # Lo que falta pagar
+            "total_income": sum_pagado,
+            "total_expenses": sum_pendiente,
+            "total_exp": sum_pendiente,      # <--- AGREGADO PARA ARREGLAR EL ERROR ACTUAL
             "total_balance": sum_pagado - sum_pendiente,
             "weekly_income": sum_pagado / 4,
             "monthly_income": sum_pagado,
@@ -41,9 +41,9 @@ def obtener_contexto_financiero(user_id):
         }
     except Exception as e:
         print(f"Error de datos: {e}")
-        return {"total_income":0,"total_expenses":0,"total_balance":0,"pagos":[]}
+        return {"total_income":0.0, "total_exp":0.0, "total_expenses":0.0, "pagos":[]}
 
-# --- RUTAS DE NAVEGACIÓN ---
+# --- RUTAS ---
 
 @app.route('/')
 def index():
@@ -53,7 +53,7 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email').lower()
+        email = request.form.get('email', '').lower().strip()
         password = request.form.get('password')
         try:
             res = supabase.table("users").select("*").eq("email", email).execute()
@@ -63,23 +63,9 @@ def login():
                 session['email'] = user['email']
                 return redirect(url_for('dashboard'))
             flash("Credenciales incorrectas", "danger")
-        except:
-            flash("Error de base de datos", "danger")
+        except Exception as e:
+            flash(f"Error: {str(e)}", "danger")
     return render_template('login.html')
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        email = request.form.get('email').lower()
-        password = request.form.get('password')
-        try:
-            hashed = generate_password_hash(password)
-            supabase.table("users").insert({"email": email, "password": hashed}).execute()
-            flash("¡Registro exitoso!", "success")
-            return redirect(url_for('login'))
-        except:
-            flash("El usuario ya existe", "danger")
-    return render_template('register.html')
 
 @app.route('/dashboard')
 def dashboard():
@@ -91,7 +77,7 @@ def dashboard():
 def pagina_gastos():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_contexto_financiero(session['user_id'])
-    # Solo mostramos los pendientes en la página de gastos
+    # Filtramos para mostrar solo los pendientes en la vista de gastos
     ctx['pagos'] = [p for p in ctx['pagos'] if p.get('estado') == 'pendiente']
     return render_template('expenses.html', active_page='expenses', **ctx)
 
@@ -99,7 +85,7 @@ def pagina_gastos():
 def pagina_ingresos():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_contexto_financiero(session['user_id'])
-    # Solo mostramos los pagados en la página de ingresos
+    # Filtramos para mostrar solo los pagados en la vista de ingresos
     ctx['pagos'] = [p for p in ctx['pagos'] if p.get('estado') == 'pagado']
     return render_template('incomes.html', active_page='incomes', **ctx)
 
@@ -109,5 +95,4 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
