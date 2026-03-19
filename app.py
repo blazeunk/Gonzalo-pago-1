@@ -126,20 +126,41 @@ def register():
             return render_template('register.html')
         
         try:
-            # Registrar con Supabase Auth
+            # Registrar con Supabase Auth - SIN VERIFICACIÓN DE EMAIL
+            # Nota: Debes deshabilitar "Confirm email" en el dashboard de Supabase
             response = supabase.auth.sign_up({
                 "email": email,
                 "password": password,
                 "options": {
                     "data": {
                         "username": email.split('@')[0]
-                    }
+                    },
+                    "email_confirm": True  # Forzar confirmación automática
                 }
             })
             
             if response.user:
                 logger.info(f"Usuario registrado exitosamente: {response.user.id}")
-                flash('¡Registro exitoso! Revisa tu email para confirmar la cuenta.', 'success')
+                
+                # Auto login después del registro
+                try:
+                    login_response = supabase.auth.sign_in_with_password({
+                        "email": email,
+                        "password": password
+                    })
+                    
+                    if login_response.user:
+                        session['user_id'] = login_response.user.id
+                        session['email'] = login_response.user.email
+                        session['username'] = email.split('@')[0]
+                        session.permanent = True
+                        
+                        flash('¡Registro exitoso! Bienvenido a Gonzalo Pago.', 'success')
+                        return redirect(url_for('dashboard'))
+                except:
+                    pass
+                
+                flash('¡Registro exitoso! Ahora puedes iniciar sesión.', 'success')
                 return redirect(url_for('login'))
             else:
                 flash('Error en el registro', 'danger')
