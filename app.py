@@ -135,15 +135,6 @@ def eliminar_gasto(id):
 
 # --- GESTIÓN DE INGRESOS ---
 
-@app.route('/incomes')
-def pagina_ingresos():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    user_id = session['user_id']
-    
-    ingresos = supabase.table("ingresos").select("*, categorias_ingresos(nombre)").eq("usuario_id", user_id).order("id").execute().data
-    categorias = supabase.table("categorias_ingresos").select("*").execute().data
-    return render_template('incomes.html', ingresos_lista=ingresos, categorias=categorias)
-
 @app.route('/add_income', methods=['POST'])
 def agregar_income():
     if 'user_id' not in session: return redirect(url_for('login'))
@@ -153,7 +144,7 @@ def agregar_income():
         "categoria_id": int(request.form.get('categoria_id')),
         "usuario_id": session['user_id']
     }).execute()
-    return redirect(url_for('pagina_incomes'))
+    return redirect(url_for('pagina_ingresos')) # <-- Corregido
 
 @app.route('/edit_income/<int:id>', methods=['POST'])
 def editar_ingreso(id):
@@ -163,13 +154,13 @@ def editar_ingreso(id):
         "monto": float(request.form.get('monto')),
         "categoria_id": int(request.form.get('categoria_id'))
     }).eq("id", id).execute()
-    return redirect(url_for('pagina_incomes'))
+    return redirect(url_for('pagina_ingresos')) # <-- Corregido
 
 @app.route('/delete_income/<int:id>')
 def eliminar_ingreso(id):
     if 'user_id' not in session: return redirect(url_for('login'))
     supabase.table("ingresos").delete().eq("id", id).execute()
-    return redirect(url_for('pagina_incomes'))
+    return redirect(url_for('pagina_ingresos')) # <-- Corregido
 
 # --- EXPORTAR A EXCEL ---
 
