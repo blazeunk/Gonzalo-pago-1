@@ -16,13 +16,15 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
-# Configuración de sesión
+# Configuración de sesión OPTIMIZADA
 app.config.update(
-    SESSION_COOKIE_SECURE=False,  # Cambiar a True en producción con HTTPS
+    SESSION_COOKIE_SECURE=False,  # True en producción con HTTPS
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_DOMAIN=None,
-    PERMANENT_SESSION_LIFETIME=timedelta(days=7)
+    SESSION_PERMANENT=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7),
+    SESSION_REFRESH_EACH_REQUEST=True
 )
 
 # ========== CONFIGURACIÓN SUPABASE ==========
@@ -38,9 +40,30 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Verificar si hay sesión en Flask
         if 'user_id' not in session:
+            logger.warning("Acceso denegado - No hay sesión")
             flash('Por favor inicia sesión para acceder', 'warning')
             return redirect(url_for('login'))
+        
+        # Verificar que el token de Supabase sigue siendo válido
+        try:
+            # Intentar obtener el usuario actual de Supabase
+            user = supabase.auth.get_user()
+            if not user or not user.user:
+                logger.warning("Token de Supabase inválido, cerrando sesión")
+                session.clear()
+                supabase.auth.sign_out()
+                flash('Tu sesión ha expirado. Por favor inicia sesión nuevamente.', 'warning')
+                return redirect(url_for('login'))
+        except Exception as e:
+            logger.error(f"Error verificando token: {e}")
+            # Si hay error, asumimos que el token no es válido
+            session.clear()
+            supabase.auth.sign_out()
+            flash('Error de autenticación. Por favor inicia sesión nuevamente.', 'warning')
+            return redirect(url_for('login'))
+        
         return f(*args, **kwargs)
     return decorated_function
 
@@ -78,21 +101,28 @@ def login():
                 "password": password
             })
             
-            if response.user:
+            if response and response.user:
                 # Obtener metadata del usuario
                 user_metadata = response.user.user_metadata
                 username = user_metadata.get('username', email.split('@')[0])
                 
+                # Guardar información en la sesión de Flask
                 session.clear()
                 session['user_id'] = response.user.id
                 session['email'] = response.user.email
                 session['username'] = username
                 session.permanent = True
                 
-                logger.info(f"Login exitoso para: {email}")
+                # Guardar el token de acceso para futuras peticiones
+                if hasattr(response, 'session') and response.session:
+                    session['access_token'] = response.session.access_token
+                    session['refresh_token'] = response.session.refresh_token
+                
+                logger.info(f"Login exitoso para: {email} - ID: {response.user.id}")
                 flash(f'¡Bienvenido {username}!', 'success')
                 return redirect(url_for('dashboard'))
             else:
+                logger.warning(f"Login fallido - Respuesta sin usuario: {response}")
                 flash('Email o contraseña incorrectos', 'danger')
                 
         except Exception as e:
@@ -126,8 +156,7 @@ def register():
             return render_template('register.html')
         
         try:
-            # Registrar con Supabase Auth - SIN VERIFICACIÓN DE EMAIL
-            # Nota: Debes deshabilitar "Confirm email" en el dashboard de Supabase
+            # Registrar con Supabase Auth
             response = supabase.auth.sign_up({
                 "email": email,
                 "password": password,
@@ -135,11 +164,11 @@ def register():
                     "data": {
                         "username": email.split('@')[0]
                     },
-                    "email_confirm": True  # Forzar confirmación automática
+                    "email_confirm": True  # Auto-confirmar email
                 }
             })
             
-            if response.user:
+            if response and response.user:
                 logger.info(f"Usuario registrado exitosamente: {response.user.id}")
                 
                 # Auto login después del registro
@@ -149,16 +178,21 @@ def register():
                         "password": password
                     })
                     
-                    if login_response.user:
+                    if login_response and login_response.user:
+                        session.clear()
                         session['user_id'] = login_response.user.id
                         session['email'] = login_response.user.email
                         session['username'] = email.split('@')[0]
                         session.permanent = True
                         
+                        if hasattr(login_response, 'session') and login_response.session:
+                            session['access_token'] = login_response.session.access_token
+                            session['refresh_token'] = login_response.session.refresh_token
+                        
                         flash('¡Registro exitoso! Bienvenido a Gonzalo Pago.', 'success')
                         return redirect(url_for('dashboard'))
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Error en auto-login después de registro: {e}")
                 
                 flash('¡Registro exitoso! Ahora puedes iniciar sesión.', 'success')
                 return redirect(url_for('login'))
@@ -243,6 +277,8 @@ def dashboard():
         for i in ingresos:
             cat = i.get('categoria', 'Otros')
             ingresos_por_categoria[cat] = ingresos_por_categoria.get(cat, 0) + i.get('monto', 0)
+        
+        logger.info(f"Dashboard cargado para usuario: {session.get('username')}")
         
         return render_template('dashboard.html',
                              weekly_exp=gastos_semana,
@@ -427,57 +463,7 @@ def eliminar_ingreso(ingreso_id):
     
     return redirect(url_for('ver_ingresos'))
 
-# ========== API PARA GRÁFICOS ==========
-@app.route('/api/resumen')
-@login_required
-def api_resumen():
-    try:
-        user_id = session['user_id']
-        
-        # Obtener gastos
-        gastos = supabase.table('gastos')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .execute()
-        
-        # Obtener ingresos
-        ingresos = supabase.table('ingresos')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .execute()
-        
-        # Procesar datos
-        gastos_por_cat = {}
-        for g in gastos.data:
-            cat = g.get('categoria', 'Otros')
-            gastos_por_cat[cat] = gastos_por_cat.get(cat, 0) + g.get('monto', 0)
-        
-        ingresos_por_cat = {}
-        for i in ingresos.data:
-            cat = i.get('categoria', 'Otros')
-            ingresos_por_cat[cat] = ingresos_por_cat.get(cat, 0) + i.get('monto', 0)
-        
-        return jsonify({
-            'gastos': {
-                'labels': list(gastos_por_cat.keys()),
-                'data': list(gastos_por_cat.values())
-            },
-            'ingresos': {
-                'labels': list(ingresos_por_cat.keys()),
-                'data': list(ingresos_por_cat.values())
-            },
-            'totales': {
-                'gastos': sum(gastos_por_cat.values()),
-                'ingresos': sum(ingresos_por_cat.values()),
-                'balance': sum(ingresos_por_cat.values()) - sum(gastos_por_cat.values())
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Error en API: {e}")
-        return jsonify({'error': str(e)}), 500
-
-# ========== RUTA DE DEPURACIÓN ==========
+# ========== RUTAS DE DEPURACIÓN ==========
 @app.route('/debug/session')
 def debug_session():
     """Ver estado de la sesión (solo para desarrollo)"""
@@ -485,7 +471,9 @@ def debug_session():
         return jsonify({
             'session': dict(session),
             'user_id': session.get('user_id'),
-            'email': session.get('email')
+            'email': session.get('email'),
+            'has_access_token': 'access_token' in session,
+            'has_refresh_token': 'refresh_token' in session
         })
     return jsonify({'error': 'No disponible en producción'}), 404
 
