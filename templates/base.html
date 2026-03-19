@@ -1,197 +1,118 @@
 <!DOCTYPE html>
-<html lang="es" data-bs-theme="light">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Gonzalo Pago - {% block title %}Inicio{% endblock %}</title>
-
-    <!-- Bootstrap CSS -->
-    <link href="{{ url_for('static', filename='css/bootstrap.min.css') }}" rel="stylesheet">
-
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-
-    <!-- jQuery (tu versión local) -->
-    <script src="{{ url_for('static', filename='js/jQuery_v4.0.0.min.js') }}"></script>
-
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-
-    <!-- Bootstrap JS -->
-    <script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Gonzalo Pago{% endblock %}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        :root {
-            --bs-body-bg: #f8f9fa;
-            --bs-body-color: #212529;
-        }
-
-        [data-bs-theme="dark"] {
-            --bs-body-bg: #121212;
-            --bs-body-color: #e0e0e0;
-            --bs-card-bg: #1e1e1e;
-            --bs-card-border-color: #333;
-        }
-
-        body {
-            background-color: var(--bs-body-bg);
-            color: var(--bs-body-color);
-            min-height: 100vh;
-        }
-
-        /* Navbar más compacta y elegante */
-        .navbar {
-            padding: 0.65rem 0;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-        }
-
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.4rem;
-            letter-spacing: -0.4px;
-        }
-
-        .nav-link {
-            font-weight: 500;
-            padding: 0.5rem 1rem;
-        }
-
-        /* Offcanvas más compacto */
-        .offcanvas {
-            --bs-offcanvas-width: 270px;
-        }
-
-        /* Mejoras visuales para tarjetas y gráficos */
-        .card {
-            border: none;
-            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06);
-        }
-
-        canvas {
-            max-width: 100%;
-        }
-
-        /* Responsive móvil */
-        @media (max-width: 991.98px) {
-            main { padding-top: 0.9rem; }
-            .navbar-brand { font-size: 1.3rem; }
-        }
-
-        @media (max-width: 576px) {
-            .display-3 { font-size: 2.4rem; }
-        }
+        body { padding-top: 60px; background-color: #f8f9fa; }
+        .navbar-brand { font-weight: bold; }
+        .footer { margin-top: 50px; padding: 20px 0; text-align: center; color: #6c757d; }
     </style>
 </head>
 <body>
-
-    <!-- Navbar optimizada -->
-    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom sticky-top">
-        <div class="container-fluid px-3 px-md-4">
-            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('dashboard') }}">
-                <i class="bi bi-wallet2 fs-3 me-2 text-primary"></i>
-                Gonzalo Pago
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-wallet"></i> Gonzalo Pago
             </a>
-
-            <div class="d-flex align-items-center gap-3">
-                <!-- Toggle tema -->
-                <button id="themeToggle" class="btn btn-outline-secondary btn-sm rounded-circle" title="Cambiar tema">
-                    <i class="bi bi-moon-stars-fill"></i>
-                </button>
-
-                {% if 'user_id' in session %}
-                    <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">Salir</a>
-                {% else %}
-                    <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm">Ingresar</a>
-                {% endif %}
-
-                <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebarOffcanvas" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-            </div>
-
-            <!-- Offcanvas para móvil -->
-            <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarOffcanvas">
-                <div class="offcanvas-header border-bottom">
-                    <h5 class="offcanvas-title fw-bold">
-                        <i class="bi bi-wallet2 text-primary me-2"></i>Gonzalo Pago
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-                </div>
-                <div class="offcanvas-body">
-                    <ul class="nav flex-column nav-pills">
-                        <li class="nav-item">
-                            <a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">
-                                <i class="bi bi-speedometer2 me-2"></i> Dashboard
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if active_page == 'expenses' %}active{% endif %}" href="{{ url_for('pagina_gastos') }}">
-                                <i class="bi bi-receipt me-2"></i> Gastos
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if active_page == 'incomes' %}active{% endif %}" href="{{ url_for('pagina_ingresos') }}">
-                                <i class="bi bi-cash-stack me-2"></i> Ingresos
-                            </a>
-                        </li>
-                    </ul>
-                </div>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    {% if session.user_id %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}" 
+                           href="{{ url_for('dashboard') }}">
+                            <i class="fas fa-chart-pie"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'ver_ingresos' %}active{% endif %}" 
+                           href="{{ url_for('ver_ingresos') }}">
+                            <i class="fas fa-arrow-up"></i> Ingresos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'ver_gastos' %}active{% endif %}" 
+                           href="{{ url_for('ver_gastos') }}">
+                            <i class="fas fa-arrow-down"></i> Gastos
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+                
+                <ul class="navbar-nav">
+                    {% if session.user_id %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" 
+                           data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user-circle"></i> {{ session.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="#"><i class="fas fa-id-card"></i> Perfil</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                    <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'login' %}active{% endif %}" 
+                           href="{{ url_for('login') }}">
+                            <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'register' %}active{% endif %}" 
+                           href="{{ url_for('register') }}">
+                            <i class="fas fa-user-plus"></i> Registrarse
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
             </div>
         </div>
     </nav>
 
-    <div class="container-fluid">
-        <div class="row flex-nowrap">
-            <!-- Sidebar Desktop -->
-            <nav class="col-auto col-lg-3 col-xl-2 d-none d-lg-block bg-body-tertiary border-end vh-100 position-sticky top-0 overflow-auto pt-4 shadow-sm">
-                <div class="px-3 mb-4">
-                    <h5 class="text-primary fw-bold"><i class="bi bi-wallet2 me-2"></i>Gonzalo Pago</h5>
-                </div>
-                <ul class="nav flex-column nav-pills px-2">
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'dashboard' %}active{% endif %} py-3" href="{{ url_for('dashboard') }}">
-                            <i class="bi bi-speedometer2 fs-5 me-3"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'expenses' %}active{% endif %} py-3" href="{{ url_for('pagina_gastos') }}">
-                            <i class="bi bi-receipt fs-5 me-3"></i> Gastos
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if active_page == 'incomes' %}active{% endif %} py-3" href="{{ url_for('pagina_ingresos') }}">
-                            <i class="bi bi-cash-stack fs-5 me-3"></i> Ingresos
-                        </a>
-                    </li>
-                </ul>
-            </nav>
-
-            <!-- Contenido principal -->
-            <main class="col-12 col-lg-9 col-xl-10 ms-lg-auto px-3 px-md-4 py-4 pb-5">
-                {% block content %}{% endblock %}
-            </main>
-        </div>
+    <!-- Mensajes Flash -->
+    <div class="container mt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
     </div>
 
-    <!-- Script Toggle Modo Oscuro -->
-    <script>
-        const themeToggle = document.getElementById('themeToggle');
-        const html = document.documentElement;
-        const savedTheme = localStorage.getItem('theme') || 
-                          (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        
-        html.setAttribute('data-bs-theme', savedTheme);
-        themeToggle.innerHTML = savedTheme === 'dark' ? 
-            '<i class="bi bi-sun-fill"></i>' : '<i class="bi bi-moon-stars-fill"></i>';
+    <!-- Contenido Principal -->
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
 
-        themeToggle.addEventListener('click', () => {
-            const current = html.getAttribute('data-bs-theme');
-            const next = current === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-bs-theme', next);
-            localStorage.setItem('theme', next);
-            themeToggle.innerHTML = next === 'dark' ? 
-                '<i class="bi bi-sun-fill"></i>' : '<i class="bi bi-moon-stars-fill"></i>';
-        });
-    </script>
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p class="mb-0">
+                <i class="fas fa-copyright"></i> 2026 Gonzalo Pago - App de Manejo de Gastos
+            </p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
