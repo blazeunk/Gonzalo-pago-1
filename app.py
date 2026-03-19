@@ -26,6 +26,13 @@ def get_db_connection():
         print(f"❌ Error de conexión: {e}")
         return None, None
 
+@app.route("/")
+def index():
+    # Si el usuario ya entró, al dashboard. Si no, al login.
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
