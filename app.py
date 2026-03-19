@@ -44,6 +44,13 @@ def login_required(f):
 def get_today():
     return datetime.now().strftime('%Y-%m-%d')
 
+def safe_float(value, default=0):
+    """Convierte a float de manera segura"""
+    try:
+        return float(value) if value not in (None, '') else default
+    except (ValueError, TypeError):
+        return default
+
 @app.route('/')
 def index():
     if 'user_id' in session:
@@ -381,10 +388,6 @@ def debug_session():
         'cookies': dict(request.cookies)
     })
 
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
-# ========== INICIALIZACIÓN ==========
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
