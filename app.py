@@ -2,7 +2,7 @@ import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from supabase import create_client, Client
 from functools import wraps
-from datetime import timedelta
+from datetime import timedelta, datetime
 from dotenv import load_dotenv
 import logging
 
@@ -25,7 +25,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(days=7)
 )
 
-# Configuración Supabase
+# ========== CONFIGURACIÓN SUPABASE ==========
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
@@ -44,6 +44,10 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def get_today():
+    """Retorna la fecha actual en formato YYYY-MM-DD"""
+    return datetime.now().strftime('%Y-%m-%d')
+
 # ========== RUTAS DE AUTENTICACIÓN ==========
 @app.route('/')
 def index():
@@ -53,11 +57,12 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # Si ya está logueado, redirigir
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
-        email = request.form.get('username', '').strip()  # Cambiado a email
+        email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         
         logger.info(f"Intento de login - Email: {email}")
@@ -74,14 +79,14 @@ def login():
             })
             
             if response.user:
-                # Obtener metadata
+                # Obtener metadata del usuario
                 user_metadata = response.user.user_metadata
                 username = user_metadata.get('username', email.split('@')[0])
                 
                 session.clear()
                 session['user_id'] = response.user.id
-                session['username'] = username
                 session['email'] = response.user.email
+                session['username'] = username
                 session.permanent = True
                 
                 logger.info(f"Login exitoso para: {email}")
@@ -106,24 +111,18 @@ def login():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         
-        logger.info(f"Intento de registro - Usuario: {username}, Email: {email}")
+        logger.info(f"Intento de registro - Email: {email}")
         
-        # Validaciones
-        errores = []
-        if not username or len(username) < 3:
-            errores.append("El usuario debe tener al menos 3 caracteres")
-        if not email or '@' not in email:
-            errores.append("Email inválido")
-        if not password or len(password) < 4:
-            errores.append("La contraseña debe tener al menos 4 caracteres")
+        # Validaciones básicas
+        if not email or not password:
+            flash('Email y contraseña son requeridos', 'danger')
+            return render_template('register.html')
         
-        if errores:
-            for error in errores:
-                flash(error, 'danger')
+        if len(password) < 4:
+            flash('La contraseña debe tener al menos 4 caracteres', 'danger')
             return render_template('register.html')
         
         try:
@@ -133,8 +132,7 @@ def register():
                 "password": password,
                 "options": {
                     "data": {
-                        "username": username,
-                        "full_name": username
+                        "username": email.split('@')[0]
                     }
                 }
             })
@@ -159,79 +157,318 @@ def register():
     
     return render_template('register.html')
 
+@app.route('/logout')
+def logout():
+    try:
+        supabase.auth.sign_out()
+    except:
+        pass
+    session.clear()
+    flash('Has cerrado sesión', 'info')
+    return redirect(url_for('login'))
+
+# ========== RUTAS DEL DASHBOARD ==========
 @app.route('/dashboard')
 @login_required
 def dashboard():
     try:
-        # Obtener gastos (necesitas crear tabla 'gastos' en Supabase)
-        gastos = []
-        ingresos = []
-        total_gastos = 0
-        total_ingresos = 0
+        user_id = session['user_id']
         
-        # Intentar obtener gastos si existe la tabla
-        try:
-            gastos_result = supabase.table('gastos')\
-                .select('*')\
-                .eq('user_id', session['user_id'])\
-                .order('created_at', desc=True)\
-                .limit(10)\
-                .execute()
-            gastos = gastos_result.data if gastos_result.data else []
-            
-            # Calcular total
-            if gastos:
-                total_gastos = sum(g.get('amount', 0) for g in gastos)
-        except:
-            pass  # La tabla no existe aún
+        # Obtener fecha actual
+        hoy = datetime.now()
+        hace_7_dias = (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
+        inicio_mes = hoy.replace(day=1).strftime('%Y-%m-%d')
         
-        balance = total_ingresos - total_gastos
+        # Obtener gastos del usuario
+        gastos_result = supabase.table('gastos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        # Obtener ingresos del usuario
+        ingresos_result = supabase.table('ingresos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        gastos = gastos_result.data if gastos_result.data else []
+        ingresos = ingresos_result.data if ingresos_result.data else []
+        
+        # Calcular totales
+        total_gastos = sum(item.get('monto', 0) for item in gastos)
+        total_ingresos = sum(item.get('monto', 0) for item in ingresos)
+        
+        # Calcular semanales
+        gastos_semana = sum(item.get('monto', 0) for item in gastos 
+                           if item.get('fecha', '')[:10] >= hace_7_dias)
+        ingresos_semana = sum(item.get('monto', 0) for item in ingresos 
+                            if item.get('fecha', '')[:10] >= hace_7_dias)
+        
+        # Calcular mensuales
+        gastos_mes = sum(item.get('monto', 0) for item in gastos 
+                        if item.get('fecha', '')[:10] >= inicio_mes)
+        ingresos_mes = sum(item.get('monto', 0) for item in ingresos 
+                         if item.get('fecha', '')[:10] >= inicio_mes)
+        
+        # Preparar datos para gráficos
+        gastos_por_categoria = {}
+        for g in gastos:
+            cat = g.get('categoria', 'Otros')
+            gastos_por_categoria[cat] = gastos_por_categoria.get(cat, 0) + g.get('monto', 0)
+        
+        ingresos_por_categoria = {}
+        for i in ingresos:
+            cat = i.get('categoria', 'Otros')
+            ingresos_por_categoria[cat] = ingresos_por_categoria.get(cat, 0) + i.get('monto', 0)
         
         return render_template('dashboard.html',
-                             gastos=gastos,
-                             ingresos=ingresos,
-                             total_gastos=total_gastos,
-                             total_ingresos=total_ingresos,
-                             balance=balance)
+                             weekly_exp=gastos_semana,
+                             weekly_income=ingresos_semana,
+                             monthly_exp=gastos_mes,
+                             monthly_income=ingresos_mes,
+                             total_exp=total_gastos,
+                             total_income=total_ingresos,
+                             total_balance=total_ingresos - total_gastos,
+                             gastos_data=list(gastos_por_categoria.values()),
+                             gastos_labels=list(gastos_por_categoria.keys()),
+                             ingresos_data=list(ingresos_por_categoria.values()),
+                             ingresos_labels=list(ingresos_por_categoria.keys()),
+                             today=get_today())
+    
     except Exception as e:
         logger.error(f"Error en dashboard: {e}")
         flash('Error al cargar el dashboard', 'danger')
         return redirect(url_for('login'))
 
-@app.route('/logout')
-def logout():
-    supabase.auth.sign_out()
-    session.clear()
-    flash('Has cerrado sesión', 'info')
-    return redirect(url_for('login'))
+# ========== RUTAS DE GASTOS ==========
+@app.route('/gastos')
+@login_required
+def ver_gastos():
+    try:
+        user_id = session['user_id']
+        
+        result = supabase.table('gastos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        gastos = result.data if result.data else []
+        
+        return render_template('expenses.html', 
+                             gastos=gastos,
+                             today=get_today())
+    
+    except Exception as e:
+        logger.error(f"Error al cargar gastos: {e}")
+        flash('Error al cargar los gastos', 'danger')
+        return redirect(url_for('dashboard'))
 
-# ========== RUTAS DE DEPURACIÓN ==========
+@app.route('/gastos/agregar', methods=['POST'])
+@login_required
+def agregar_gasto():
+    try:
+        fecha = request.form.get('fecha', get_today())
+        monto = float(request.form.get('monto', 0))
+        categoria = request.form.get('categoria', 'Otros')
+        descripcion = request.form.get('descripcion', '').strip()
+        
+        if monto <= 0:
+            flash('El monto debe ser mayor a 0', 'danger')
+            return redirect(url_for('ver_gastos'))
+        
+        nuevo_gasto = {
+            'user_id': session['user_id'],
+            'fecha': fecha,
+            'monto': monto,
+            'categoria': categoria,
+            'descripcion': descripcion,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        result = supabase.table('gastos').insert(nuevo_gasto).execute()
+        
+        if result.data:
+            flash('Gasto agregado correctamente', 'success')
+        else:
+            flash('Error al agregar gasto', 'danger')
+            
+    except ValueError:
+        flash('Monto inválido', 'danger')
+    except Exception as e:
+        logger.error(f"Error al agregar gasto: {e}")
+        flash('Error al agregar gasto', 'danger')
+    
+    return redirect(url_for('ver_gastos'))
+
+@app.route('/gastos/eliminar/<gasto_id>')
+@login_required
+def eliminar_gasto(gasto_id):
+    try:
+        result = supabase.table('gastos')\
+            .delete()\
+            .eq('id', gasto_id)\
+            .eq('user_id', session['user_id'])\
+            .execute()
+        
+        if result.data:
+            flash('Gasto eliminado', 'info')
+        else:
+            flash('No se pudo eliminar el gasto', 'danger')
+            
+    except Exception as e:
+        logger.error(f"Error al eliminar gasto: {e}")
+        flash('Error al eliminar gasto', 'danger')
+    
+    return redirect(url_for('ver_gastos'))
+
+# ========== RUTAS DE INGRESOS ==========
+@app.route('/ingresos')
+@login_required
+def ver_ingresos():
+    try:
+        user_id = session['user_id']
+        
+        result = supabase.table('ingresos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        ingresos = result.data if result.data else []
+        
+        return render_template('incomes.html', 
+                             ingresos=ingresos,
+                             today=get_today())
+    
+    except Exception as e:
+        logger.error(f"Error al cargar ingresos: {e}")
+        flash('Error al cargar los ingresos', 'danger')
+        return redirect(url_for('dashboard'))
+
+@app.route('/ingresos/agregar', methods=['POST'])
+@login_required
+def agregar_ingreso():
+    try:
+        fecha = request.form.get('fecha', get_today())
+        monto = float(request.form.get('monto', 0))
+        categoria = request.form.get('categoria', 'Otros')
+        descripcion = request.form.get('descripcion', '').strip()
+        
+        if monto <= 0:
+            flash('El monto debe ser mayor a 0', 'danger')
+            return redirect(url_for('ver_ingresos'))
+        
+        nuevo_ingreso = {
+            'user_id': session['user_id'],
+            'fecha': fecha,
+            'monto': monto,
+            'categoria': categoria,
+            'descripcion': descripcion,
+            'created_at': datetime.now().isoformat()
+        }
+        
+        result = supabase.table('ingresos').insert(nuevo_ingreso).execute()
+        
+        if result.data:
+            flash('Ingreso agregado correctamente', 'success')
+        else:
+            flash('Error al agregar ingreso', 'danger')
+            
+    except ValueError:
+        flash('Monto inválido', 'danger')
+    except Exception as e:
+        logger.error(f"Error al agregar ingreso: {e}")
+        flash('Error al agregar ingreso', 'danger')
+    
+    return redirect(url_for('ver_ingresos'))
+
+@app.route('/ingresos/eliminar/<ingreso_id>')
+@login_required
+def eliminar_ingreso(ingreso_id):
+    try:
+        result = supabase.table('ingresos')\
+            .delete()\
+            .eq('id', ingreso_id)\
+            .eq('user_id', session['user_id'])\
+            .execute()
+        
+        if result.data:
+            flash('Ingreso eliminado', 'info')
+        else:
+            flash('No se pudo eliminar el ingreso', 'danger')
+            
+    except Exception as e:
+        logger.error(f"Error al eliminar ingreso: {e}")
+        flash('Error al eliminar ingreso', 'danger')
+    
+    return redirect(url_for('ver_ingresos'))
+
+# ========== API PARA GRÁFICOS ==========
+@app.route('/api/resumen')
+@login_required
+def api_resumen():
+    try:
+        user_id = session['user_id']
+        
+        # Obtener gastos
+        gastos = supabase.table('gastos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .execute()
+        
+        # Obtener ingresos
+        ingresos = supabase.table('ingresos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .execute()
+        
+        # Procesar datos
+        gastos_por_cat = {}
+        for g in gastos.data:
+            cat = g.get('categoria', 'Otros')
+            gastos_por_cat[cat] = gastos_por_cat.get(cat, 0) + g.get('monto', 0)
+        
+        ingresos_por_cat = {}
+        for i in ingresos.data:
+            cat = i.get('categoria', 'Otros')
+            ingresos_por_cat[cat] = ingresos_por_cat.get(cat, 0) + i.get('monto', 0)
+        
+        return jsonify({
+            'gastos': {
+                'labels': list(gastos_por_cat.keys()),
+                'data': list(gastos_por_cat.values())
+            },
+            'ingresos': {
+                'labels': list(ingresos_por_cat.keys()),
+                'data': list(ingresos_por_cat.values())
+            },
+            'totales': {
+                'gastos': sum(gastos_por_cat.values()),
+                'ingresos': sum(ingresos_por_cat.values()),
+                'balance': sum(ingresos_por_cat.values()) - sum(gastos_por_cat.values())
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error en API: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ========== RUTA DE DEPURACIÓN ==========
 @app.route('/debug/session')
 def debug_session():
-    """Ver estado de la sesión"""
-    return jsonify({
-        'session': dict(session),
-        'user_id': session.get('user_id'),
-        'username': session.get('username')
-    })
-
-@app.route('/debug/auth')
-def debug_auth():
-    """Verificar autenticación con Supabase"""
-    try:
-        # Intentar obtener la sesión actual de Supabase
-        user = supabase.auth.get_user()
+    """Ver estado de la sesión (solo para desarrollo)"""
+    if app.debug:
         return jsonify({
-            'status': 'ok',
-            'user': user.user.email if user.user else None,
-            'session_exists': user.user is not None
+            'session': dict(session),
+            'user_id': session.get('user_id'),
+            'email': session.get('email')
         })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+    return jsonify({'error': 'No disponible en producción'}), 404
 
+# ========== INICIALIZACIÓN ==========
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
