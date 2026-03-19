@@ -29,12 +29,19 @@ def login():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
+        
         try:
-            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-            session['user_id'] = res.user.id
-            return redirect(url_for('dashboard'))
+            # 1. Autenticar con Supabase
+            auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            
+            # 2. GUARDAR SESIÓN (Esto es lo que te falta)
+            session['user_id'] = auth_response.user.id
+            session.permanent = True  # Para que no se borre al cerrar la pestaña
+            
+            return redirect(url_for('pagina_gastos')) # O la ruta principal
         except Exception as e:
             return render_template('login.html', error="Credenciales inválidas")
+            
     return render_template('login.html')
 
 @app.route('/logout')
