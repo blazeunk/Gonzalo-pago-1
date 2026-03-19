@@ -6,21 +6,20 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
+# 1. Cargar variables de entorno
 load_dotenv()
 
 app = Flask(__name__)
+# Usa la clave del config original o una por defecto
 app.secret_key = os.environ.get("SECRET_KEY", "476d47eca2452cdd4519aa1bb823fe51b2d409462bf2cbd4152cacfc7959a9da")
 
-# Configuración de base de datos
+# 2. Configuración de Base de Datos (PostgreSQL / Supabase)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
-    """Conecta a Supabase (PostgreSQL) y devuelve conexión y cursor."""
+    """Establece conexión con Supabase usando RealDictCursor."""
     try:
-        # sslmode='require' es vital para Supabase
         conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-        # Usamos RealDictCursor para que funcione igual que tu MYSQL_CURSORCLASS (acceso por nombre de columna)
         cur = conn.cursor(cursor_factory=RealDictCursor)
         return conn, cur
     except Exception as e:
@@ -37,108 +36,168 @@ def require_login():
     if request.endpoint in public_routes:
         return
     if 'user_id' not in session:
-        flash("Debes iniciar sesión primero", "warning")
         return redirect(url_for('login'))
 
 # ================================================================
-# FUNCIONES AUXILIARES (Adaptadas a PostgreSQL)
+# FUNCIONES AUXILIARES (Adaptadas para PostgreSQL)
 # ================================================================
 
-def obtener_categorias_gastos():
+def calcular_totales(user_id):
     conn, cur = get_db_connection()
-    if not cur: return []
-    cur.execute("SELECT id, nombre FROM categorias_gastos ORDER BY nombre")
-    res = cur.fetchall()
+    if not cur: return {}
+    
+    # Cálculos usando sintaxis PostgreSQL (EXTRACT en vez de MONTH/YEAR)
+    queries = {
+        "weekly_income": "SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE user_id = %s AND fecha >= CURRENT_DATE - INTERVAL '7 days'",
+        "weekly_exp": "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE user_id = %s AND fecha >= CURRENT_DATE - INTERVAL '7 days'",
+        "monthly_income": "SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE user_id = %s AND EXTRACT(MONTH FROM fecha) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fecha) = EXTRACT(YEAR FROM CURRENT_DATE)",
+        "monthly_exp": "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE user_id = %s AND EXTRACT(MONTH FROM fecha) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fecha) = EXTRACT(YEAR FROM CURRENT_DATE)",
+        "total_income": "SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE user_id = %s",
+        "total_exp": "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE user_id = %s"
+    }
+    
+    resultados = {}
+    for key, sql in queries.items():
+        cur.execute(sql, (user_id,))
+        val = cur.fetchone()
+        # En RealDictCursor, el resultado es un dict, pero las funciones de agregación a veces no tienen nombre
+        resultados[key] = float(list(val.values())[0])
+    
     cur.close(); conn.close()
-    return res
-
-def obtener_gastos(user_id):
-    conn, cur = get_db_connection()
-    if not cur: return []
-    cur.execute("""
-        SELECT g.id, g.fecha, g.monto, c.nombre AS categoria, g.categoria_id, g.descripcion
-        FROM gastos g
-        JOIN categorias_gastos c ON g.categoria_id = c.id
-        WHERE g.user_id = %s
-        ORDER BY g.fecha DESC LIMIT 500
-    """, (user_id,))
-    res = cur.fetchall()
-    cur.close(); conn.close()
-    return res
-
-# --- Nota: Deberás adaptar las otras funciones (ingresos, totales) siguiendo este mismo patrón ---
+    return resultados
 
 # ================================================================
 # AUTENTICACIÓN
 # ================================================================
 
+@app.route("/")
+def inicio():
+    return redirect(url_for("login"))
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-
-        if not (email and password):
-            flash("Email y contraseña son obligatorios", "warning")
-            return redirect(url_for("register"))
-
-        hashed_pw = generate_password_hash(password)
-        conn, cur = get_db_connection()
-        
-        try:
-            cur.execute("INSERT INTO users (email, password) VALUES (%s, %s)", (email, hashed_pw))
-            conn.commit()
-            flash("Registro exitoso. Ahora inicia sesión.", "success")
-            return redirect(url_for("login"))
-        except Exception as e:
-            print(e)
-            flash("Este email ya está registrado o hubo un error", "danger")
-        finally:
-            if cur: cur.close()
-            if conn: conn.close()
-
+        email, password = request.form.get("email"), request.form.get("password")
+        if email and password:
+            hashed_pw = generate_password_hash(password)
+            conn, cur = get_db_connection()
+            try:
+                cur.execute("INSERT INTO users (email, password) VALUES (%s, %s)", (email, hashed_pw))
+                conn.commit()
+                flash("Registro exitoso", "success")
+                return redirect(url_for("login"))
+            except:
+                flash("El email ya existe", "danger")
+            finally:
+                cur.close(); conn.close()
     return render_template("register.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
-
+        email, password = request.form.get("email"), request.form.get("password")
         conn, cur = get_db_connection()
-        if not cur: return "Error de BD", 500
-        
         cur.execute("SELECT id, password FROM users WHERE email = %s", (email,))
         user = cur.fetchone()
         cur.close(); conn.close()
-
         if user and check_password_hash(user["password"], password):
             session["user_id"] = user["id"]
-            flash("Sesión iniciada correctamente", "success")
             return redirect(url_for("dashboard"))
-        else:
-            flash("Email o contraseña incorrectos", "danger")
-
+        flash("Credenciales inválidas", "danger")
     return render_template("login.html")
 
 @app.route("/logout")
 def logout():
-    session.pop("user_id", None)
-    flash("Sesión cerrada correctamente", "info")
+    session.clear()
     return redirect(url_for("login"))
 
-@app.route("/")
-def inicio():
-    return redirect(url_for("login"))
+# ================================================================
+# RUTAS DE VISTA (Coinciden con url_for de base.html)
+# ================================================================
 
 @app.route("/dashboard")
 def dashboard():
-    # Simplificado para que el despliegue no falle si no has creado todas las tablas
-    return render_template("dashboard.html", active_page="dashboard")
+    user_id = session["user_id"]
+    res = calcular_totales(user_id)
+    
+    # Datos para gráficos
+    conn, cur = get_db_connection()
+    cur.execute("""
+        SELECT c.nombre as categoria, SUM(g.monto) as total 
+        FROM gastos g JOIN categorias_gastos c ON g.categoria_id = c.id 
+        WHERE g.user_id = %s GROUP BY c.nombre
+    """, (user_id,))
+    g_cat = cur.fetchall()
+    
+    cur.execute("""
+        SELECT c.nombre as categoria, SUM(i.monto) as total 
+        FROM ingresos i JOIN categorias_ingresos c ON i.categoria_id = c.id 
+        WHERE i.user_id = %s GROUP BY c.nombre
+    """, (user_id,))
+    i_cat = cur.fetchall()
+    cur.close(); conn.close()
+
+    return render_template("dashboard.html", 
+        **res, total_balance=res['total_income'] - res['total_exp'],
+        gastos_labels=[r['categoria'] for r in g_cat], gastos_data=[float(r['total']) for r in g_cat],
+        ingresos_labels=[r['categoria'] for r in i_cat], ingresos_data=[float(r['total']) for r in i_cat],
+        active_page="dashboard")
+
+@app.route("/expenses")
+def pagina_gastos():
+    user_id = session["user_id"]
+    conn, cur = get_db_connection()
+    cur.execute("SELECT g.*, c.nombre as categoria FROM gastos g JOIN categorias_gastos c ON g.categoria_id = c.id WHERE g.user_id = %s ORDER BY g.fecha DESC", (user_id,))
+    expenses = cur.fetchall()
+    cur.execute("SELECT * FROM categorias_gastos ORDER BY nombre")
+    cats = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template("expenses.html", expenses=expenses, categorias=cats, today=datetime.now().strftime("%Y-%m-%d"), active_page="expenses")
+
+@app.route("/incomes")
+def pagina_ingresos():
+    user_id = session["user_id"]
+    conn, cur = get_db_connection()
+    cur.execute("SELECT i.*, c.nombre as categoria FROM ingresos i JOIN categorias_ingresos c ON i.categoria_id = c.id WHERE i.user_id = %s ORDER BY i.fecha DESC", (user_id,))
+    incomes = cur.fetchall()
+    cur.execute("SELECT * FROM categorias_ingresos ORDER BY nombre")
+    cats = cur.fetchall()
+    cur.close(); conn.close()
+    return render_template("incomes.html", incomes=incomes, categorias=cats, today=datetime.now().strftime("%Y-%m-%d"), active_page="incomes")
 
 # ================================================================
-# EJECUCIÓN
+# CRUD (POST)
 # ================================================================
+
+@app.route("/add_expense", methods=["POST"])
+def agregar_gasto():
+    conn, cur = get_db_connection()
+    cur.execute("INSERT INTO gastos (user_id, fecha, monto, categoria_id, descripcion) VALUES (%s, %s, %s, %s, %s)",
+                (session["user_id"], request.form['date'], float(request.form['amount']), int(request.form['categoria_id']), request.form['desc']))
+    conn.commit(); cur.close(); conn.close()
+    return redirect(url_for("pagina_gastos"))
+
+@app.route("/add_income", methods=["POST"])
+def agregar_ingreso():
+    conn, cur = get_db_connection()
+    cur.execute("INSERT INTO ingresos (user_id, fecha, monto, categoria_id, descripcion) VALUES (%s, %s, %s, %s, %s)",
+                (session["user_id"], request.form['date'], float(request.form['amount']), int(request.form['categoria_id']), request.form['desc']))
+    conn.commit(); cur.close(); conn.close()
+    return redirect(url_for("pagina_ingresos"))
+
+@app.route("/delete_expense/<int:id>", methods=["POST"])
+def eliminar_gasto(id):
+    conn, cur = get_db_connection()
+    cur.execute("DELETE FROM gastos WHERE id = %s AND user_id = %s", (id, session["user_id"]))
+    conn.commit(); cur.close(); conn.close()
+    return "", 204 # Respuesta vacía para el AJAX de tu HTML
+
+@app.route("/delete_income/<int:id>", methods=["POST"])
+def eliminar_ingreso(id):
+    conn, cur = get_db_connection()
+    cur.execute("DELETE FROM ingresos WHERE id = %s AND user_id = %s", (id, session["user_id"]))
+    conn.commit(); cur.close(); conn.close()
+    return "", 204
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
