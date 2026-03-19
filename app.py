@@ -71,21 +71,94 @@ def index():
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
+# ========== RUTAS DE DEPURACIÓN ==========
+@app.route('/debug/request', methods=['GET', 'POST'])
+def debug_request():
+    """Muestra todo lo que llega en la petición"""
+    debug_info = {
+        'method': request.method,
+        'headers': dict(request.headers),
+        'form': dict(request.form),
+        'args': dict(request.args),
+        'cookies': dict(request.cookies),
+        'session': dict(session),
+        'content_type': request.content_type,
+        'content_length': request.content_length
+    }
+    return jsonify(debug_info)
+
+@app.route('/debug/test-login', methods=['POST'])
+def test_login():
+    """Versión simplificada de login para probar"""
+    data = request.get_json() if request.is_json else request.form
+    return jsonify({
+        'received_data': dict(data),
+        'username': data.get('username'),
+        'password': data.get('password'),
+        'headers': dict(request.headers)
+    })
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # Si ya está logueado, redirigir
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
+    # VERSIÓN DE DIAGNÓSTICO
     
+    # 1. VER QUÉ ESTÁ LLEGANDO
+    print("=== DEBUG LOGIN ===")
+    print(f"Método: {request.method}")
+    print(f"Form data: {dict(request.form)}")
+    print(f"Headers: {dict(request.headers)}")
+    print(f"Cookies: {request.cookies}")
+    print("===================")
+    
+    # Si es GET, mostrar el formulario
+    if request.method == 'GET':
+        return render_template('login.html')
+    
+    # Si es POST, procesar
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
+        # Obtener datos de diferentes formas posibles
+        username = None
+        password = None
         
-        logger.info(f"Intento de login - Usuario: {username}")
+        # Intentar obtener de form
+        if request.form:
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '').strip()
+            print(f"De form - username: '{username}', password: '{password}'")
         
-        if not username or not password:
-            flash('Usuario y contraseña son requeridos', 'danger')
+        # Si no hay en form, intentar de JSON
+        if not username and request.is_json:
+            data = request.get_json()
+            if data:
+                username = data.get('username', '').strip()
+                password = data.get('password', '').strip()
+                print(f"De JSON - username: '{username}', password: '{password}'")
+        
+        # Si aún no hay, intentar de args (query string)
+        if not username:
+            username = request.args.get('username', '').strip()
+            password = request.args.get('password', '').strip()
+            print(f"De args - username: '{username}', password: '{password}'")
+        
+        # Verificar si llegaron datos
+        if not username:
+            print("❌ No se recibió username")
+            flash('No se recibió el nombre de usuario', 'danger')
             return render_template('login.html')
+        
+        if not password:
+            print("❌ No se recibió password")
+            flash('No se recibió la contraseña', 'danger')
+            return render_template('login.html')
+        
+        # Verificar longitud
+        if len(username) < 3:
+            print(f"❌ Usuario demasiado corto: {len(username)} caracteres")
+            flash(f'El usuario debe tener al menos 3 caracteres (recibidos: {len(username)})', 'danger')
+            return render_template('login.html')
+        
+        # Si llegamos aquí, los datos son válidos
+        print(f"✅ Datos válidos - Usuario: '{username}'")
         
         try:
             # Buscar usuario en Supabase
@@ -94,11 +167,11 @@ def login():
                 .eq('username', username)\
                 .execute()
             
-            users = result.data
+            print(f"Resultado de búsqueda: {result.data}")
             
-            if users and len(users) > 0:
-                user = users[0]
-                # Verificar contraseña
+            if result.data and len(result.data) > 0:
+                user = result.data[0]
+                
                 if check_password_hash(user['password'], password):
                     # Login exitoso
                     session.clear()
@@ -106,23 +179,21 @@ def login():
                     session['username'] = user['username']
                     session.permanent = True
                     
-                    logger.info(f"Login exitoso para: {username}")
+                    print(f"✅ Login exitoso. Sesión: {dict(session)}")
                     flash(f'¡Bienvenido {username}!', 'success')
                     return redirect(url_for('dashboard'))
                 else:
-                    logger.warning(f"Contraseña incorrecta para: {username}")
+                    print("❌ Contraseña incorrecta")
                     flash('Usuario o contraseña incorrectos', 'danger')
             else:
-                logger.warning(f"Usuario no encontrado: {username}")
+                print(f"❌ Usuario no encontrado: {username}")
                 flash('Usuario o contraseña incorrectos', 'danger')
                 
         except Exception as e:
-            logger.error(f"Error en login: {e}")
-            flash('Error al conectar con la base de datos', 'danger')
+            print(f"❌ Error en Supabase: {e}")
+            flash(f'Error de base de datos: {str(e)}', 'danger')
         
         return render_template('login.html')
-    
-    return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
