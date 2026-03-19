@@ -3,3 +3,5 @@ psycopg2-binary
 python-dotenv
 werkzeug
 gunicorn
+supabase
+postgrest
