@@ -3,25 +3,41 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-from datetime import timedelta, datetime
+from datetime import timedelta
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'tu-clave-secreta-aqui')
 
-# Configuración de sesión
-app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-app.config['SESSION_COOKIE_DOMAIN'] = None
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = True  # False en desarrollo local
+# Configuración de seguridad para Render
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
-DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
-if DEBUG:
-    app.config['SESSION_COOKIE_SECURE'] = False
+# Configuración de sesión OPTIMIZADA para Render
+app.config.update(
+    SESSION_COOKIE_SECURE=True,  # Requerido para HTTPS
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_DOMAIN=None,  # Crítico: permite cualquier dominio
+    SESSION_COOKIE_PATH='/',
+    SESSION_COOKIE_NAME='session',  # Nombre estándar
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7),
+    SESSION_REFRESH_EACH_REQUEST=True
+)
+
+# Para depuración (actívalo temporalmente si el error persiste)
+app.config['PROPAGATE_EXCEPTIONS'] = True
+
+# Manejador de errores específico
+@app.errorhandler(400)
+def bad_request(e):
+    flash('Error en la solicitud. Por favor intenta de nuevo.', 'warning')
+    return redirect(url_for('login'))
+
+@app.errorhandler(500)
+def internal_error(e):
+    flash('Error interno del servidor. Los administradores han sido notificados.', 'danger')
+    return redirect(url_for('login'))
 
 def init_db():
-    """Inicializa la base de datos con todas las tablas necesarias"""
+    """Inicializa la base de datos"""
     conn = sqlite3.connect('gastos.db')
     c = conn.cursor()
     
@@ -43,7 +59,7 @@ def init_db():
                   fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   FOREIGN KEY (usuario_id) REFERENCES usuarios (id))''')
     
-    # Tabla ingresos (NUEVA)
+    # Tabla ingresos
     c.execute('''CREATE TABLE IF NOT EXISTS ingresos
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   usuario_id INTEGER NOT NULL,
@@ -53,14 +69,6 @@ def init_db():
                   fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   FOREIGN KEY (usuario_id) REFERENCES usuarios (id))''')
     
-    # Tabla categorías (opcional, para personalización)
-    c.execute('''CREATE TABLE IF NOT EXISTS categorias
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  usuario_id INTEGER NOT NULL,
-                  nombre TEXT NOT NULL,
-                  tipo TEXT NOT NULL CHECK (tipo IN ('gasto', 'ingreso')),
-                  FOREIGN KEY (usuario_id) REFERENCES usuarios (id))''')
-    
     conn.commit()
     conn.close()
 
@@ -68,12 +76,12 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            flash('Por favor inicia sesión para acceder a esta página', 'warning')
+            flash('Por favor inicia sesión', 'warning')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
-# ========== RUTAS DE AUTENTICACIÓN ==========
+# ========== RUTAS ==========
 @app.route('/')
 def index():
     if 'user_id' in session:
@@ -82,33 +90,49 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # Limpiar cualquier sesión anterior
+    session.clear()
+    
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
         
-        conn = sqlite3.connect('gastos.db')
-        c = conn.cursor()
-        user = c.execute('SELECT * FROM usuarios WHERE username = ?', (username,)).fetchone()
-        conn.close()
-        
-        if user and check_password_hash(user[2], password):
-            session['user_id'] = user[0]
-            session['username'] = user[1]
-            session.permanent = True
-            flash(f'¡Bienvenido {username}!', 'success')
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Usuario o contraseña incorrectos', 'danger')
+        if not username or not password:
+            flash('Usuario y contraseña son requeridos', 'danger')
             return redirect(url_for('login'))
+        
+        try:
+            conn = sqlite3.connect('gastos.db')
+            c = conn.cursor()
+            user = c.execute('SELECT * FROM usuarios WHERE username = ?', (username,)).fetchone()
+            conn.close()
+            
+            if user and check_password_hash(user[2], password):
+                session.permanent = True
+                session['user_id'] = user[0]
+                session['username'] = user[1]
+                flash(f'¡Bienvenido {username}!', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Usuario o contraseña incorrectos', 'danger')
+        except Exception as e:
+            flash('Error al iniciar sesión', 'danger')
+            print(f"Error en login: {e}")
+        
+        return redirect(url_for('login'))
     
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        email = request.form['email']
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        email = request.form.get('email', '').strip()
+        
+        if not username or not password or not email:
+            flash('Todos los campos son requeridos', 'danger')
+            return redirect(url_for('register'))
         
         hashed_password = generate_password_hash(password)
         
@@ -123,65 +147,61 @@ def register():
             return redirect(url_for('login'))
         except sqlite3.IntegrityError:
             flash('El nombre de usuario o email ya existe', 'danger')
-            return redirect(url_for('register'))
+        except Exception as e:
+            flash('Error en el registro', 'danger')
+            print(f"Error en register: {e}")
+        
+        return redirect(url_for('register'))
     
     return render_template('register.html')
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    try:
+        conn = sqlite3.connect('gastos.db')
+        c = conn.cursor()
+        
+        # Obtener datos
+        gastos = c.execute('''SELECT id, descripcion, monto, categoria, fecha 
+                              FROM gastos WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 10''', 
+                           (session['user_id'],)).fetchall()
+        
+        ingresos = c.execute('''SELECT id, descripcion, monto, categoria, fecha 
+                                FROM ingresos WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 10''', 
+                             (session['user_id'],)).fetchall()
+        
+        total_gastos = c.execute('SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE usuario_id = ?', 
+                                (session['user_id'],)).fetchone()[0]
+        total_ingresos = c.execute('SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE usuario_id = ?', 
+                                  (session['user_id'],)).fetchone()[0]
+        
+        conn.close()
+        balance = total_ingresos - total_gastos
+        
+        return render_template('dashboard.html', 
+                             gastos=gastos, ingresos=ingresos,
+                             total_gastos=total_gastos, total_ingresos=total_ingresos,
+                             balance=balance)
+    except Exception as e:
+        flash('Error al cargar el dashboard', 'danger')
+        print(f"Error en dashboard: {e}")
+        return redirect(url_for('login'))
 
 @app.route('/logout')
 def logout():
     session.clear()
-    flash('Has cerrado sesión correctamente', 'info')
+    flash('Has cerrado sesión', 'info')
     return redirect(url_for('login'))
-
-# ========== RUTAS PRINCIPALES ==========
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    """Dashboard principal con resumen de gastos e ingresos"""
-    conn = sqlite3.connect('gastos.db')
-    c = conn.cursor()
-    
-    # Obtener gastos del usuario
-    gastos = c.execute('''SELECT id, descripcion, monto, categoria, fecha 
-                          FROM gastos 
-                          WHERE usuario_id = ? 
-                          ORDER BY fecha DESC LIMIT 10''', 
-                       (session['user_id'],)).fetchall()
-    
-    # Obtener ingresos del usuario
-    ingresos = c.execute('''SELECT id, descripcion, monto, categoria, fecha 
-                            FROM ingresos 
-                            WHERE usuario_id = ? 
-                            ORDER BY fecha DESC LIMIT 10''', 
-                         (session['user_id'],)).fetchall()
-    
-    # Calcular totales
-    total_gastos = c.execute('SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE usuario_id = ?', 
-                            (session['user_id'],)).fetchone()[0]
-    total_ingresos = c.execute('SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE usuario_id = ?', 
-                              (session['user_id'],)).fetchone()[0]
-    balance = total_ingresos - total_gastos
-    
-    conn.close()
-    
-    return render_template('dashboard.html', 
-                         gastos=gastos, 
-                         ingresos=ingresos,
-                         total_gastos=total_gastos,
-                         total_ingresos=total_ingresos,
-                         balance=balance)
 
 # ========== RUTAS DE GASTOS ==========
 @app.route('/gastos')
 @login_required
 def ver_gastos():
-    """Página para ver todos los gastos"""
     conn = sqlite3.connect('gastos.db')
     c = conn.cursor()
     gastos = c.execute('''SELECT id, descripcion, monto, categoria, fecha 
-                          FROM gastos 
-                          WHERE usuario_id = ? 
-                          ORDER BY fecha DESC''', 
+                          FROM gastos WHERE usuario_id = ? ORDER BY fecha DESC''', 
                        (session['user_id'],)).fetchall()
     conn.close()
     return render_template('gastos.html', gastos=gastos)
@@ -189,19 +209,29 @@ def ver_gastos():
 @app.route('/gastos/agregar', methods=['POST'])
 @login_required
 def agregar_gasto():
-    descripcion = request.form['descripcion']
-    monto = float(request.form['monto'])
+    descripcion = request.form.get('descripcion', '').strip()
+    monto = request.form.get('monto', '').strip()
     categoria = request.form.get('categoria', 'Otros')
     
-    conn = sqlite3.connect('gastos.db')
-    c = conn.cursor()
-    c.execute('''INSERT INTO gastos (usuario_id, descripcion, monto, categoria) 
-                 VALUES (?, ?, ?, ?)''',
-              (session['user_id'], descripcion, monto, categoria))
-    conn.commit()
-    conn.close()
+    if not descripcion or not monto:
+        flash('Descripción y monto son requeridos', 'danger')
+        return redirect(url_for('ver_gastos'))
     
-    flash('Gasto agregado correctamente', 'success')
+    try:
+        monto = float(monto)
+        conn = sqlite3.connect('gastos.db')
+        c = conn.cursor()
+        c.execute('INSERT INTO gastos (usuario_id, descripcion, monto, categoria) VALUES (?, ?, ?, ?)',
+                  (session['user_id'], descripcion, monto, categoria))
+        conn.commit()
+        conn.close()
+        flash('Gasto agregado correctamente', 'success')
+    except ValueError:
+        flash('Monto inválido', 'danger')
+    except Exception as e:
+        flash('Error al agregar gasto', 'danger')
+        print(f"Error: {e}")
+    
     return redirect(url_for('ver_gastos'))
 
 @app.route('/gastos/eliminar/<int:gasto_id>')
@@ -213,21 +243,17 @@ def eliminar_gasto(gasto_id):
               (gasto_id, session['user_id']))
     conn.commit()
     conn.close()
-    
     flash('Gasto eliminado', 'info')
     return redirect(url_for('ver_gastos'))
 
-# ========== RUTAS DE INGRESOS (NUEVAS) ==========
+# ========== RUTAS DE INGRESOS ==========
 @app.route('/ingresos')
 @login_required
 def ver_ingresos():
-    """Página para ver todos los ingresos"""
     conn = sqlite3.connect('gastos.db')
     c = conn.cursor()
     ingresos = c.execute('''SELECT id, descripcion, monto, categoria, fecha 
-                            FROM ingresos 
-                            WHERE usuario_id = ? 
-                            ORDER BY fecha DESC''', 
+                            FROM ingresos WHERE usuario_id = ? ORDER BY fecha DESC''', 
                          (session['user_id'],)).fetchall()
     conn.close()
     return render_template('ingresos.html', ingresos=ingresos)
@@ -235,19 +261,29 @@ def ver_ingresos():
 @app.route('/ingresos/agregar', methods=['POST'])
 @login_required
 def agregar_ingreso():
-    descripcion = request.form['descripcion']
-    monto = float(request.form['monto'])
+    descripcion = request.form.get('descripcion', '').strip()
+    monto = request.form.get('monto', '').strip()
     categoria = request.form.get('categoria', 'Salario')
     
-    conn = sqlite3.connect('gastos.db')
-    c = conn.cursor()
-    c.execute('''INSERT INTO ingresos (usuario_id, descripcion, monto, categoria) 
-                 VALUES (?, ?, ?, ?)''',
-              (session['user_id'], descripcion, monto, categoria))
-    conn.commit()
-    conn.close()
+    if not descripcion or not monto:
+        flash('Descripción y monto son requeridos', 'danger')
+        return redirect(url_for('ver_ingresos'))
     
-    flash('Ingreso agregado correctamente', 'success')
+    try:
+        monto = float(monto)
+        conn = sqlite3.connect('gastos.db')
+        c = conn.cursor()
+        c.execute('INSERT INTO ingresos (usuario_id, descripcion, monto, categoria) VALUES (?, ?, ?, ?)',
+                  (session['user_id'], descripcion, monto, categoria))
+        conn.commit()
+        conn.close()
+        flash('Ingreso agregado correctamente', 'success')
+    except ValueError:
+        flash('Monto inválido', 'danger')
+    except Exception as e:
+        flash('Error al agregar ingreso', 'danger')
+        print(f"Error: {e}")
+    
     return redirect(url_for('ver_ingresos'))
 
 @app.route('/ingresos/eliminar/<int:ingreso_id>')
@@ -259,40 +295,10 @@ def eliminar_ingreso(ingreso_id):
               (ingreso_id, session['user_id']))
     conn.commit()
     conn.close()
-    
     flash('Ingreso eliminado', 'info')
     return redirect(url_for('ver_ingresos'))
-
-# ========== API PARA GRÁFICAS ==========
-@app.route('/api/resumen')
-@login_required
-def api_resumen():
-    """API para obtener datos resumidos para gráficas"""
-    conn = sqlite3.connect('gastos.db')
-    c = conn.cursor()
-    
-    # Gastos por categoría
-    gastos_cat = c.execute('''SELECT categoria, SUM(monto) as total 
-                               FROM gastos 
-                               WHERE usuario_id = ? 
-                               GROUP BY categoria''', 
-                            (session['user_id'],)).fetchall()
-    
-    # Ingresos por categoría
-    ingresos_cat = c.execute('''SELECT categoria, SUM(monto) as total 
-                                 FROM ingresos 
-                                 WHERE usuario_id = ? 
-                                 GROUP BY categoria''', 
-                              (session['user_id'],)).fetchall()
-    
-    conn.close()
-    
-    return jsonify({
-        'gastos_por_categoria': [{'categoria': cat, 'total': total} for cat, total in gastos_cat],
-        'ingresos_por_categoria': [{'categoria': cat, 'total': total} for cat, total in ingresos_cat]
-    })
 
 if __name__ == '__main__':
     init_db()
     port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=DEBUG)
+    app.run(host='0.0.0.0', port=port, debug=False)
