@@ -136,7 +136,7 @@ def eliminar_gasto(id):
 @app.route('/delete_income/<int:id>')
 def eliminar_ingreso(id):
     supabase.table("ingresos").delete().eq("id", id).execute()
-    return redirect(url_for('pagina_incomes'))
+    return redirect(url_for('pagina_ingresos'))
 
 @app.route('/edit_expense/<int:id>', methods=['POST'])
 def editar_gasto(id):
@@ -160,7 +160,7 @@ def editar_ingreso(id):
         "categoria_id": int(request.form.get('categoria_id'))
     }).eq("id", id).execute()
     
-    return redirect(url_for('pagina_incomes'))
+    return redirect(url_for('pagina_ingresos'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
