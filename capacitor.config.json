@@ -1,0 +1,10 @@
+{
+  "appId": "com.gonzalopago.app",
+  "appName": "Gonzalo Pago",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://gonzalo-pago.onrender.com",
+    "cleartext": true
+  }
+}

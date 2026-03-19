@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Gastos{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="h3 mb-0">Gastos</h2>
+</div>
+
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- Nuevo Gasto -->
+<div class="card shadow-sm mb-5">
+    <div class="card-header fw-semibold">Nuevo Gasto</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('agregar_gasto') }}">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small">Fecha</label>
+                    <input type="date" name="date" class="form-control" value="{{ today }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Monto</label>
+                    <input type="number" step="0.01" name="amount" class="form-control" placeholder="0.00" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Categoría</label>
+                    <select name="categoria_id" class="form-select" required>
+                        <option value="" disabled selected>Seleccionar categoría...</option>
+                        {% for cat in categorias %}
+                            <option value="{{ cat.id }}">{{ cat.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label small">Descripción</label>
+                    <input type="text" name="desc" class="form-control" placeholder="Ej: Supermercado, nafta, etc.">
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary px-5">Guardar Gasto</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h5 class="mb-3">Historial de Gastos</h5>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>Fecha</th>
+                <th>Monto</th>
+                <th>Categoría</th>
+                <th>Descripción</th>
+                <th class="text-end">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in expenses %}
+            <tr data-id="{{ exp.id }}"
+                data-fecha="{{ exp.fecha }}"
+                data-monto="{{ exp.monto }}"
+                data-categoria-id="{{ exp.categoria_id }}"
+                data-descripcion="{{ exp.descripcion or '' }}">
+                <td>{{ exp.fecha }}</td>
+                <td class="fw-bold text-danger">${{ "%.2f"|format(exp.monto) }}</td>
+                <td><span class="badge bg-secondary-subtle text-secondary">{{ exp.categoria }}</span></td>
+                <td class="text-truncate" style="max-width: 250px;">{{ exp.descripcion or '—' }}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-primary edit-expense me-2">
+                        <i class="bi bi-pencil-square"></i> Editar
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger delete-expense">
+                        <i class="bi bi-trash"></i> Eliminar
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center py-4 text-muted">No hay gastos registrados aún</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- ====================== MODALES ====================== -->
+
+<!-- Modal Editar Gasto -->
+<div class="modal fade" id="editExpenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Gasto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editExpenseForm" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="edit_expense_id">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label small">Fecha</label>
+                            <input type="date" name="date" id="edit_fecha" class="form-control" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small">Monto</label>
+                            <input type="number" step="0.01" name="amount" id="edit_monto" class="form-control" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">Categoría</label>
+                            <select name="categoria_id" id="edit_categoria_id" class="form-select" required>
+                                {% for cat in categorias %}
+                                    <option value="{{ cat.id }}">{{ cat.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">Descripción</label>
+                            <input type="text" name="desc" id="edit_descripcion" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Confirmar Eliminar -->
+<div class="modal fade" id="deleteExpenseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">¿Eliminar este gasto?</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="list-group">
+                    <li class="list-group-item"><strong>Monto:</strong> <span id="delete_monto" class="fw-bold"></span></li>
+                    <li class="list-group-item"><strong>Descripción:</strong> <span id="delete_descripcion"></span></li>
+                </ul>
+                <p class="text-danger mt-3 mb-0"><small>Esta acción no se puede deshacer.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteExpense">Eliminar Definitivamente</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ====================== JAVASCRIPT ====================== -->
+<script>
+$(document).ready(function () {
+
+    // Editar Gasto
+    $('.edit-expense').on('click', function () {
+        const row = $(this).closest('tr');
+        
+        $('#edit_expense_id').val(row.data('id'));
+        $('#edit_fecha').val(row.data('fecha'));
+        $('#edit_monto').val(row.data('monto'));
+        $('#edit_descripcion').val(row.data('descripcion'));
+        $('#edit_categoria_id').val(row.data('categoria-id'));
+
+        $('#editExpenseForm').attr('action', '/edit_expense/' + row.data('id'));
+        $('#editExpenseModal').modal('show');
+    });
+
+    // Eliminar Gasto
+    let deleteId = null;
+
+    $('.delete-expense').on('click', function () {
+        deleteId = $(this).data('id');
+        $('#delete_monto').text('$' + parseFloat($(this).data('monto')).toFixed(2));
+        $('#delete_descripcion').text($(this).data('descripcion') || 'Sin descripción');
+        $('#deleteExpenseModal').modal('show');
+    });
+
+    $('#confirmDeleteExpense').on('click', function () {
+        if (deleteId) {
+            $.ajax({
+                url: '/delete_expense/' + deleteId,
+                type: 'POST',
+                success: function() {
+                    $('#deleteExpenseModal').modal('hide');
+                    location.reload();
+                }
+            });
+        }
+    });
+});
+</script>
+
+{% endblock %}
