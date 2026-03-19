@@ -152,6 +152,204 @@ def dashboard():
                          ingresos_data=[],
                          ingresos_labels=[],
                          today=get_today())
+# ========== RUTAS DE GASTOS ==========
+@app.route('/gastos')
+@login_required
+def ver_gastos():
+    try:
+        user_id = session['user_id']
+        
+        # Intentar obtener gastos de Supabase
+        result = supabase.table('gastos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        gastos = result.data if result.data else []
+        
+        # Categorías predefinidas (luego las haremos personalizables)
+        categorias = [
+            {'id': 'Alimentación', 'nombre': 'Alimentación'},
+            {'id': 'Transporte', 'nombre': 'Transporte'},
+            {'id': 'Vivienda', 'nombre': 'Vivienda'},
+            {'id': 'Entretenimiento', 'nombre': 'Entretenimiento'},
+            {'id': 'Salud', 'nombre': 'Salud'},
+            {'id': 'Educación', 'nombre': 'Educación'},
+            {'id': 'Servicios', 'nombre': 'Servicios'},
+            {'id': 'Otros', 'nombre': 'Otros'}
+        ]
+        
+        return render_template('expenses.html', 
+                             gastos=gastos,
+                             categorias=categorias,
+                             today=get_today())
+    
+    except Exception as e:
+        logger.error(f"Error al cargar gastos: {e}")
+        # Si la tabla no existe, mostrar mensaje amigable
+        if 'relation' in str(e) and 'does not exist' in str(e):
+            flash('La tabla de gastos no existe en Supabase. Ejecuta el script SQL.', 'warning')
+        else:
+            flash('Error al cargar los gastos', 'danger')
+        return render_template('expenses.html', 
+                             gastos=[],
+                             categorias=[],
+                             today=get_today())
+
+@app.route('/gastos/agregar', methods=['POST'])
+@login_required
+def agregar_gasto():
+    try:
+        fecha = request.form.get('fecha', get_today())
+        monto = float(request.form.get('monto', 0))
+        categoria = request.form.get('categoria', 'Otros')
+        descripcion = request.form.get('descripcion', '').strip()
+        
+        if monto <= 0:
+            flash('El monto debe ser mayor a 0', 'danger')
+            return redirect(url_for('ver_gastos'))
+        
+        nuevo_gasto = {
+            'user_id': session['user_id'],
+            'fecha': fecha,
+            'monto': monto,
+            'categoria': categoria,
+            'descripcion': descripcion
+        }
+        
+        result = supabase.table('gastos').insert(nuevo_gasto).execute()
+        
+        if result.data:
+            flash('Gasto agregado correctamente', 'success')
+        else:
+            flash('Error al agregar gasto', 'danger')
+            
+    except ValueError:
+        flash('Monto inválido', 'danger')
+    except Exception as e:
+        logger.error(f"Error al agregar gasto: {e}")
+        flash(f'Error: {str(e)}', 'danger')
+    
+    return redirect(url_for('ver_gastos'))
+
+@app.route('/gastos/eliminar/<gasto_id>')
+@login_required
+def eliminar_gasto(gasto_id):
+    try:
+        result = supabase.table('gastos')\
+            .delete()\
+            .eq('id', gasto_id)\
+            .eq('user_id', session['user_id'])\
+            .execute()
+        
+        if result.data:
+            flash('Gasto eliminado', 'info')
+        else:
+            flash('No se pudo eliminar el gasto', 'danger')
+            
+    except Exception as e:
+        logger.error(f"Error al eliminar gasto: {e}")
+        flash('Error al eliminar gasto', 'danger')
+    
+    return redirect(url_for('ver_gastos'))
+
+# ========== RUTAS DE INGRESOS ==========
+@app.route('/ingresos')
+@login_required
+def ver_ingresos():
+    try:
+        user_id = session['user_id']
+        
+        result = supabase.table('ingresos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        ingresos = result.data if result.data else []
+        
+        categorias = [
+            {'id': 'Salario', 'nombre': 'Salario'},
+            {'id': 'Freelance', 'nombre': 'Freelance'},
+            {'id': 'Inversiones', 'nombre': 'Inversiones'},
+            {'id': 'Negocio', 'nombre': 'Negocio'},
+            {'id': 'Regalo', 'nombre': 'Regalo'},
+            {'id': 'Otros', 'nombre': 'Otros'}
+        ]
+        
+        return render_template('incomes.html', 
+                             ingresos=ingresos,
+                             categorias=categorias,
+                             today=get_today())
+    
+    except Exception as e:
+        logger.error(f"Error al cargar ingresos: {e}")
+        if 'relation' in str(e) and 'does not exist' in str(e):
+            flash('La tabla de ingresos no existe en Supabase. Ejecuta el script SQL.', 'warning')
+        else:
+            flash('Error al cargar los ingresos', 'danger')
+        return render_template('incomes.html', 
+                             ingresos=[],
+                             categorias=[],
+                             today=get_today())
+
+@app.route('/ingresos/agregar', methods=['POST'])
+@login_required
+def agregar_ingreso():
+    try:
+        fecha = request.form.get('fecha', get_today())
+        monto = float(request.form.get('monto', 0))
+        categoria = request.form.get('categoria', 'Otros')
+        descripcion = request.form.get('descripcion', '').strip()
+        
+        if monto <= 0:
+            flash('El monto debe ser mayor a 0', 'danger')
+            return redirect(url_for('ver_ingresos'))
+        
+        nuevo_ingreso = {
+            'user_id': session['user_id'],
+            'fecha': fecha,
+            'monto': monto,
+            'categoria': categoria,
+            'descripcion': descripcion
+        }
+        
+        result = supabase.table('ingresos').insert(nuevo_ingreso).execute()
+        
+        if result.data:
+            flash('Ingreso agregado correctamente', 'success')
+        else:
+            flash('Error al agregar ingreso', 'danger')
+            
+    except ValueError:
+        flash('Monto inválido', 'danger')
+    except Exception as e:
+        logger.error(f"Error al agregar ingreso: {e}")
+        flash(f'Error: {str(e)}', 'danger')
+    
+    return redirect(url_for('ver_ingresos'))
+
+@app.route('/ingresos/eliminar/<ingreso_id>')
+@login_required
+def eliminar_ingreso(ingreso_id):
+    try:
+        result = supabase.table('ingresos')\
+            .delete()\
+            .eq('id', ingreso_id)\
+            .eq('user_id', session['user_id'])\
+            .execute()
+        
+        if result.data:
+            flash('Ingreso eliminado', 'info')
+        else:
+            flash('No se pudo eliminar el ingreso', 'danger')
+            
+    except Exception as e:
+        logger.error(f"Error al eliminar ingreso: {e}")
+        flash('Error al eliminar ingreso', 'danger')
+    
+    return redirect(url_for('ver_ingresos'))
 
 @app.route('/logout')
 def logout():
