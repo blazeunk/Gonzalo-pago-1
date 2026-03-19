@@ -127,5 +127,40 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+# --- ELIMINAR ---
+@app.route('/delete_expense/<int:id>')
+def eliminar_gasto(id):
+    supabase.table("gastos").delete().eq("id", id).execute()
+    return redirect(url_for('pagina_gastos'))
+
+@app.route('/delete_income/<int:id>')
+def eliminar_ingreso(id):
+    supabase.table("ingresos").delete().eq("id", id).execute()
+    return redirect(url_for('pagina_incomes'))
+
+@app.route('/edit_expense/<int:id>', methods=['POST'])
+def editar_gasto(id):
+    if 'user_id' not in session: return redirect(url_for('login'))
+    
+    supabase.table("gastos").update({
+        "descripcion": request.form.get('descripcion'),
+        "monto": float(request.form.get('monto')),
+        "categoria_id": int(request.form.get('categoria_id'))
+    }).eq("id", id).execute()
+    
+    return redirect(url_for('pagina_gastos'))
+
+@app.route('/edit_income/<int:id>', methods=['POST'])
+def editar_ingreso(id):
+    if 'user_id' not in session: return redirect(url_for('login'))
+    
+    supabase.table("ingresos").update({
+        "descripcion": request.form.get('descripcion'),
+        "monto": float(request.form.get('monto')),
+        "categoria_id": int(request.form.get('categoria_id'))
+    }).eq("id", id).execute()
+    
+    return redirect(url_for('pagina_incomes'))
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
