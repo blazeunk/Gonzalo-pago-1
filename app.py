@@ -4,7 +4,7 @@ from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "pago_gonzalo_secure_2026")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "pago_gonzalo_ultra_safe_2026")
 
 # --- CONFIGURACIÓN SUPABASE ---
 supabase_url = os.environ.get("SUPABASE_URL", "").strip()
@@ -17,42 +17,38 @@ except Exception as e:
     supabase = None
 
 def obtener_todo_el_contexto(user_id):
-    """Genera el diccionario completo de variables para el HTML."""
+    """Genera el diccionario completo de variables para evitar UndefinedError."""
     try:
         res = supabase.table("pagos").select("*").eq("user_id", user_id).execute()
         pagos = res.data or []
         
         total_pagado = sum(float(p.get('monto', 0)) for p in pagos if p.get('estado') == 'pagado')
         total_pendiente = sum(float(p.get('monto', 0)) for p in pagos if p.get('estado') == 'pendiente')
-        
-        # Cálculos requeridos por el dashboard
-        # total_balance es lo que te dio el último error
         total_balance = total_pagado - total_pendiente 
         
         return {
             "resumen": {"total_pagado": total_pagado, "total_pendiente": total_pendiente, "cantidad": len(pagos)},
             "total_balance": total_balance,
-            "weekly_income": total_pagado / 4 if total_pagado > 0 else 0.0,
+            "weekly_income": total_pagado / 4,
             "monthly_income": total_pagado,
-            "weekly_exp": total_pendiente / 4 if total_pendiente > 0 else 0.0,
+            "weekly_exp": total_pendiente / 4,
             "monthly_exp": total_pendiente,
             "total_savings": total_balance if total_balance > 0 else 0.0,
             "savings_rate": 0.0,
             "pagos": pagos,
-            "user_email": session.get('email', 'Usuario')
+            "user_email": session.get('email', 'Usuario'),
+            "active_page": "dashboard"
         }
-    except Exception as e:
-        print(f"Error en contexto: {e}")
+    except:
         return {
             "resumen": {"total_pagado": 0, "total_pendiente": 0, "cantidad": 0},
-            "total_balance": 0.0,
-            "weekly_income": 0.0, "monthly_income": 0.0,
-            "weekly_exp": 0.0, "monthly_exp": 0.0,
-            "total_savings": 0.0, "savings_rate": 0.0,
-            "pagos": [], "user_email": session.get('email', 'Usuario')
+            "total_balance": 0.0, "weekly_income": 0.0, "monthly_income": 0.0,
+            "weekly_exp": 0.0, "monthly_exp": 0.0, "total_savings": 0.0,
+            "savings_rate": 0.0, "pagos": [], "user_email": "Usuario",
+            "active_page": "dashboard"
         }
 
-# --- RUTAS ---
+# --- RUTAS DE AUTENTICACIÓN ---
 
 @app.route('/')
 def index():
@@ -71,37 +67,51 @@ def login():
                 session['user_id'] = user['id']
                 session['email'] = user['email']
                 return redirect(url_for('dashboard'))
-            flash("Email o contraseña incorrectos", "danger")
+            flash("Credenciales inválidas", "danger")
         except:
             flash("Error de conexión", "danger")
     return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        try:
+            hashed = generate_password_hash(password)
+            supabase.table("users").insert({"email": email, "password": hashed}).execute()
+            flash("Cuenta creada. Ya puedes iniciar sesión.", "success")
+            return redirect(url_for('login'))
+        except Exception as e:
+            flash(f"Error al registrar: {e}", "danger")
+    return render_template('register.html')
+
+# --- RUTAS DEL DASHBOARD ---
 
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_todo_el_contexto(session['user_id'])
-    return render_template('dashboard.html', **ctx, active_page='dashboard')
+    return render_template('dashboard.html', **ctx)
 
 @app.route('/gastos')
 def pagina_gastos():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_todo_el_contexto(session['user_id'])
-    return render_template('dashboard.html', **ctx, active_page='expenses')
+    ctx['active_page'] = 'expenses'
+    return render_template('dashboard.html', **ctx)
 
 @app.route('/ingresos')
 def pagina_ingresos():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_todo_el_contexto(session['user_id'])
-    return render_template('dashboard.html', **ctx, active_page='incomes')
+    ctx['active_page'] = 'incomes'
+    return render_template('dashboard.html', **ctx)
 
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect(url_for('login'))
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
