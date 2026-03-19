@@ -116,7 +116,7 @@ def eliminar_gasto(id):
 # --- GESTIÓN DE INGRESOS ---
 
 @app.route('/incomes')
-def pagina_incomes():
+def pagina_ingresos():
     if 'user_id' not in session: return redirect(url_for('login'))
     user_id = session['user_id']
     
