@@ -2,80 +2,41 @@
 {% block title %}Iniciar Sesión{% endblock %}
 
 {% block content %}
-<div class="container d-flex justify-content-center align-items-center min-vh-100">
-    <div class="card shadow-sm p-4 w-100" style="max-width: 400px;">
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+    <div class="card shadow-sm p-4" style="max-width: 400px; width: 100%;">
         <h2 class="h4 mb-4 text-center">
-            <i class="bi bi-box-arrow-in-right text-primary me-2"></i>
-            Iniciar Sesión
+            <i class="bi bi-box-arrow-in-right me-2"></i>Iniciar Sesión
         </h2>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                <i class="bi bi-{% if category == 'success' %}check-circle{% elif category == 'danger' %}exclamation-triangle{% else %}info-circle{% endif %} me-2"></i>
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-              </div>
-            {% endfor %}
-          {% endif %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
         {% endwith %}
 
-        <form method="POST" action="{{ url_for('login') }}" id="loginForm">
+        <form method="POST" action="{{ url_for('login') }}">
             <div class="mb-3">
-                <label class="form-label">
-                    <i class="bi bi-envelope me-1"></i>Email
-                </label>
-                <input type="email" name="email" class="form-control" 
-                       placeholder="tu@email.com" required autofocus>
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-control" required autofocus>
             </div>
             <div class="mb-3">
-                <label class="form-label">
-                    <i class="bi bi-lock me-1"></i>Contraseña
-                </label>
-                <div class="input-group">
-                    <input type="password" name="password" class="form-control" 
-                           id="password" placeholder="••••••••" required minlength="4">
-                    <button class="btn btn-outline-secondary" type="button" id="togglePassword">
-                        <i class="bi bi-eye"></i>
-                    </button>
-                </div>
+                <label class="form-label">Contraseña</label>
+                <input type="password" name="password" class="form-control" required>
             </div>
-            <button type="submit" class="btn btn-primary w-100" id="submitBtn">
-                <span class="spinner-border spinner-border-sm d-none" id="loadingSpinner" role="status"></span>
-                <span id="btnText">Entrar</span>
-            </button>
+            <button type="submit" class="btn btn-primary w-100">Ingresar</button>
         </form>
         
-        <p class="text-center mt-3 small">
+        <hr class="my-3">
+        
+        <p class="text-center mb-0">
             ¿No tienes cuenta? 
-            <a href="{{ url_for('register') }}" class="text-decoration-none">
-                Regístrate <i class="bi bi-arrow-right"></i>
-            </a>
+            <a href="{{ url_for('register') }}">Regístrate</a>
         </p>
     </div>
 </div>
-
-<script>
-document.getElementById('togglePassword').addEventListener('click', function() {
-    const password = document.getElementById('password');
-    const icon = this.querySelector('i');
-    
-    if (password.type === 'password') {
-        password.type = 'text';
-        icon.classList.remove('bi-eye');
-        icon.classList.add('bi-eye-slash');
-    } else {
-        password.type = 'password';
-        icon.classList.remove('bi-eye-slash');
-        icon.classList.add('bi-eye');
-    }
-});
-
-document.getElementById('loginForm').addEventListener('submit', function() {
-    document.getElementById('loadingSpinner').classList.remove('d-none');
-    document.getElementById('btnText').textContent = 'Ingresando...';
-    document.getElementById('submitBtn').disabled = true;
-});
-</script>
 {% endblock %}
