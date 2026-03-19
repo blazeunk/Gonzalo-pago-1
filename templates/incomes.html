@@ -1,189 +1,72 @@
 {% extends "base.html" %}
-{% block title %}Ingresos{% endblock %}
-
 {% block content %}
-
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="h3 mb-0">Ingresos</h2>
-</div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
-<!-- Nuevo Ingreso -->
-<div class="card shadow-sm mb-5">
-    <div class="card-header fw-semibold">Nuevo Ingreso</div>
-    <div class="card-body">
-        <form method="POST" action="{{ url_for('agregar_ingreso') }}">
-    <input type="text" name="descripcion" placeholder="Descripción" required class="form-control mb-2">
-    <input type="number" step="0.01" name="monto" placeholder="Monto" required class="form-control mb-2">
-    
-    <select name="categoria_id" class="form-select mb-2" required>
-        <option value="" disabled selected>Selecciona Categoría</option>
-        {% for cat in categorias %}
-            <option value="{{ cat.id }}">{{ cat.nombre }}</option>
-        {% endfor %}
-    </select>
-    
-    <button type="submit" class="btn btn-success">Añadir Ingreso</button>
-</form>
-    </div>
-</div>
-
-<h5 class="mb-3">Historial de Ingresos</h5>
-
-<div class="table-responsive">
-    <table class="table table-hover align-middle">
-        <thead class="table-light">
-            <tr>
-                <th>Fecha</th>
-                <th>Monto</th>
-                <th>Fuente</th>
-                <th>Descripción</th>
-                <th class="text-end">Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for inc in incomes %}
-            <tr data-id="{{ inc.id }}"
-                data-fecha="{{ inc.fecha }}"
-                data-monto="{{ inc.monto }}"
-                data-categoria-id="{{ inc.categoria_id }}"
-                data-descripcion="{{ inc.descripcion or '' }}">
-                <td>{{ inc.fecha }}</td>
-                <td class="fw-bold text-success">${{ "%.2f"|format(inc.monto) }}</td>
-                <td><span class="badge bg-success-subtle text-success">{{ inc.categoria }}</span></td>
-                <td class="text-truncate" style="max-width: 250px;">{{ inc.descripcion or '—' }}</td>
-                <td class="text-end">
-                    <button class="btn btn-sm btn-outline-primary edit-income me-2">
-                        <i class="bi bi-pencil-square"></i> Editar
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger delete-income">
-                        <i class="bi bi-trash"></i> Eliminar
-                    </button>
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" class="text-center py-4 text-muted">No hay ingresos registrados aún</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<!-- Modal Editar Ingreso -->
-<div class="modal fade" id="editIncomeModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Editar Ingreso</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="editIncomeForm" method="POST">
-                <div class="modal-body">
-                    <input type="hidden" name="id" id="edit_income_id">
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <label class="form-label small">Fecha</label>
-                            <input type="date" name="date" id="edit_fecha_ing" class="form-control" required>
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Añadir Ingreso</h5>
+                </div>
+                <div class="card-body">
+                    <form action="{{ url_for('agregar_income') }}" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Descripción</label>
+                            <input type="text" name="descripcion" class="form-control" placeholder="Ej. Sueldo" required>
                         </div>
-                        <div class="col-6">
-                            <label class="form-label small">Monto</label>
-                            <input type="number" step="0.01" name="amount" id="edit_monto_ing" class="form-control" required>
+                        <div class="mb-3">
+                            <label class="form-label">Monto</label>
+                            <input type="number" step="0.01" name="monto" class="form-control" placeholder="0.00" required>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label small">Fuente</label>
-                            <select name="categoria_id" id="edit_categoria_id_ing" class="form-select" required>
+                        <div class="mb-3">
+                            <label class="form-label">Categoría</label>
+                            <select name="categoria_id" class="form-select" required>
+                                <option value="" disabled selected>Selecciona una...</option>
                                 {% for cat in categorias %}
                                     <option value="{{ cat.id }}">{{ cat.nombre }}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label small">Descripción</label>
-                            <input type="text" name="desc" id="edit_descripcion_ing" class="form-control">
-                        </div>
+                        <button type="submit" class="btn btn-success w-100">Guardar Ingreso</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">Historial de Ingresos</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Descripción</th>
+                                    <th>Categoría</th>
+                                    <th>Monto</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ingreso in ingresos_lista %}
+                                <tr>
+                                    <td>{{ ingreso.descripcion }}</td>
+                                    <td>
+                                        <span class="badge bg-secondary">
+                                            {{ ingreso.categorias_ingresos.nombre if ingreso.categorias_ingresos else 'Sin categoría' }}
+                                        </span>
+                                    </td>
+                                    <td class="text-success">+${{ "%.2f"|format(ingreso.monto) }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary">Eliminar</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-success">Guardar Cambios</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal Confirmar Eliminar Ingreso -->
-<div class="modal fade" id="deleteIncomeModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">¿Eliminar este ingreso?</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <ul class="list-group">
-                    <li class="list-group-item"><strong>Monto:</strong> <span id="delete_monto_ing" class="fw-bold"></span></li>
-                    <li class="list-group-item"><strong>Descripción:</strong> <span id="delete_descripcion_ing"></span></li>
-                </ul>
-                <p class="text-danger mt-3 mb-0"><small>Esta acción no se puede deshacer.</small></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteIncome">Eliminar Definitivamente</button>
             </div>
         </div>
     </div>
 </div>
-
-<script>
-$(document).ready(function () {
-
-    // Editar Ingreso
-    $('.edit-income').on('click', function () {
-        const row = $(this).closest('tr');
-        
-        $('#edit_income_id').val(row.data('id'));
-        $('#edit_fecha_ing').val(row.data('fecha'));
-        $('#edit_monto_ing').val(row.data('monto'));
-        $('#edit_descripcion_ing').val(row.data('descripcion'));
-        $('#edit_categoria_id_ing').val(row.data('categoria-id'));
-
-        $('#editIncomeForm').attr('action', '/edit_income/' + row.data('id'));
-        $('#editIncomeModal').modal('show');
-    });
-
-    // Eliminar Ingreso
-    let deleteId = null;
-
-    $('.delete-income').on('click', function () {
-        deleteId = $(this).data('id');
-        $('#delete_monto_ing').text('$' + parseFloat($(this).data('monto')).toFixed(2));
-        $('#delete_descripcion_ing').text($(this).data('descripcion') || 'Sin descripción');
-        $('#deleteIncomeModal').modal('show');
-    });
-
-    $('#confirmDeleteIncome').on('click', function () {
-        if (deleteId) {
-            $.ajax({
-                url: '/delete_income/' + deleteId,
-                type: 'POST',
-                success: function() {
-                    $('#deleteIncomeModal').modal('hide');
-                    location.reload();
-                }
-            });
-        }
-    });
-});
-</script>
-
 {% endblock %}
