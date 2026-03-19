@@ -159,14 +159,13 @@ def dashboard():
                          ingresos_data=[],
                          ingresos_labels=[],
                          today=get_today())
-# ========== RUTAS DE GASTOS ==========
+# ========== RUTAS DE GASTOS (UNA SOLA VERSIÓN) ==========
 @app.route('/gastos')
 @login_required
-def ver_gastos():
+def ver_gastos():  # ← Asegúrate que este nombre sea ÚNICO
     try:
         user_id = session['user_id']
         
-        # Intentar obtener gastos de Supabase
         result = supabase.table('gastos')\
             .select('*')\
             .eq('user_id', user_id)\
@@ -175,7 +174,6 @@ def ver_gastos():
         
         gastos = result.data if result.data else []
         
-        # Categorías predefinidas (luego las haremos personalizables)
         categorias = [
             {'id': 'Alimentación', 'nombre': 'Alimentación'},
             {'id': 'Transporte', 'nombre': 'Transporte'},
@@ -194,11 +192,7 @@ def ver_gastos():
     
     except Exception as e:
         logger.error(f"Error al cargar gastos: {e}")
-        # Si la tabla no existe, mostrar mensaje amigable
-        if 'relation' in str(e) and 'does not exist' in str(e):
-            flash('La tabla de gastos no existe en Supabase. Ejecuta el script SQL.', 'warning')
-        else:
-            flash('Error al cargar los gastos', 'danger')
+        flash('Error al cargar los gastos', 'danger')
         return render_template('expenses.html', 
                              gastos=[],
                              categorias=[],
@@ -206,7 +200,7 @@ def ver_gastos():
 
 @app.route('/gastos/agregar', methods=['POST'])
 @login_required
-def agregar_gasto():
+def agregar_gasto():  # ← Nombre ÚNICO
     try:
         fecha = request.form.get('fecha', get_today())
         monto = float(request.form.get('monto', 0))
@@ -242,7 +236,7 @@ def agregar_gasto():
 
 @app.route('/gastos/eliminar/<gasto_id>')
 @login_required
-def eliminar_gasto(gasto_id):
+def eliminar_gasto(gasto_id):  # ← Nombre ÚNICO
     try:
         result = supabase.table('gastos')\
             .delete()\
@@ -262,9 +256,10 @@ def eliminar_gasto(gasto_id):
     return redirect(url_for('ver_gastos'))
 
 # ========== RUTAS DE INGRESOS ==========
+# ========== RUTAS DE INGRESOS (UNA SOLA VERSIÓN) ==========
 @app.route('/ingresos')
 @login_required
-def ver_ingresos():
+def ver_ingresos():  # ← Nombre ÚNICO
     try:
         user_id = session['user_id']
         
@@ -292,10 +287,7 @@ def ver_ingresos():
     
     except Exception as e:
         logger.error(f"Error al cargar ingresos: {e}")
-        if 'relation' in str(e) and 'does not exist' in str(e):
-            flash('La tabla de ingresos no existe en Supabase. Ejecuta el script SQL.', 'warning')
-        else:
-            flash('Error al cargar los ingresos', 'danger')
+        flash('Error al cargar los ingresos', 'danger')
         return render_template('incomes.html', 
                              ingresos=[],
                              categorias=[],
@@ -303,7 +295,7 @@ def ver_ingresos():
 
 @app.route('/ingresos/agregar', methods=['POST'])
 @login_required
-def agregar_ingreso():
+def agregar_ingreso():  # ← Nombre ÚNICO
     try:
         fecha = request.form.get('fecha', get_today())
         monto = float(request.form.get('monto', 0))
@@ -339,7 +331,7 @@ def agregar_ingreso():
 
 @app.route('/ingresos/eliminar/<ingreso_id>')
 @login_required
-def eliminar_ingreso(ingreso_id):
+def eliminar_ingreso(ingreso_id):  # ← Nombre ÚNICO
     try:
         result = supabase.table('ingresos')\
             .delete()\
@@ -357,7 +349,6 @@ def eliminar_ingreso(ingreso_id):
         flash('Error al eliminar ingreso', 'danger')
     
     return redirect(url_for('ver_ingresos'))
-
 @app.route('/logout')
 def logout():
     try:
