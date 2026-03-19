@@ -163,6 +163,16 @@ def logout():
     flash('Sesión cerrada', 'info')
     return redirect(url_for('login'))
 
+@app.route('/gastos')
+@login_required
+def ver_gastos():
+    return render_template('gastos_simple.html', today=get_today())
+
+@app.route('/ingresos')
+@login_required
+def ver_ingresos():
+    return render_template('ingresos_simple.html', today=get_today())
+
 @app.route('/debug/session')
 def debug_session():
     """Ruta para depuración"""
