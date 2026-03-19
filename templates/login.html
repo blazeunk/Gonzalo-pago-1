@@ -1,546 +1,81 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iniciar Sesión - Gonzalo Pago</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+{% extends "base.html" %}
+{% block title %}Iniciar Sesión{% endblock %}
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .login-container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            width: 100%;
-            max-width: 450px;
-            padding: 40px;
-            animation: slideUp 0.5s ease;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .header h1 {
-            color: #333;
-            font-size: 28px;
-            margin-bottom: 10px;
-        }
-
-        .header h1 i {
-            color: #667eea;
-            margin-right: 10px;
-        }
-
-        .header p {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .alert {
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .alert-danger {
-            background: #fee;
-            color: #c33;
-            border: 1px solid #fcc;
-        }
-
-        .alert-success {
-            background: #efe;
-            color: #3c3;
-            border: 1px solid #cfc;
-        }
-
-        .alert-warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeeba;
-        }
-
-        .alert-info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-
-        .form-group {
-            margin-bottom: 25px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #555;
-            font-weight: 600;
-            font-size: 14px;
-        }
-
-        .form-group label i {
-            color: #667eea;
-            margin-right: 5px;
-        }
-
-        .input-group {
-            position: relative;
-        }
-
-        .input-group input {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e1e1e1;
-            border-radius: 10px;
-            font-size: 16px;
-            transition: all 0.3s;
-            background: #fafafa;
-        }
-
-        .input-group input:focus {
-            outline: none;
-            border-color: #667eea;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
-        }
-
-        .input-group input::placeholder {
-            color: #aaa;
-            font-size: 14px;
-        }
-
-        .input-group .toggle-password {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            cursor: pointer;
-            color: #999;
-            transition: color 0.3s;
-        }
-
-        .input-group .toggle-password:hover {
-            color: #667eea;
-        }
-
-        .form-help {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-
-        .remember-me {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            color: #666;
-        }
-
-        .remember-me input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
-
-        .forgot-password {
-            color: #667eea;
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-
-        .forgot-password:hover {
-            color: #764ba2;
-            text-decoration: underline;
-        }
-
-        .btn-login {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.3s, box-shadow 0.3s;
-            margin-bottom: 20px;
-        }
-
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102,126,234,0.3);
-        }
-
-        .btn-login:active {
-            transform: translateY(0);
-        }
-
-        .btn-login i {
-            margin-right: 8px;
-        }
-
-        .register-link {
-            text-align: center;
-            color: #666;
-            font-size: 14px;
-        }
-
-        .register-link a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-            transition: color 0.3s;
-        }
-
-        .register-link a:hover {
-            color: #764ba2;
-            text-decoration: underline;
-        }
-
-        .demo-credentials {
-            margin-top: 25px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border: 1px dashed #dee2e6;
-        }
-
-        .demo-credentials p {
-            color: #666;
-            font-size: 13px;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-
-        .demo-credentials .credential {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 13px;
-            color: #495057;
-            padding: 5px 0;
-        }
-
-        .demo-credentials .credential i {
-            color: #667eea;
-            width: 20px;
-        }
-
-        .error-message {
-            color: #dc3545;
-            font-size: 12px;
-            margin-top: 5px;
-            display: none;
-        }
-
-        .error-message.show {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .loading {
-            display: none;
-            text-align: center;
-            margin: 10px 0;
-        }
-
-        .loading.show {
-            display: block;
-        }
-
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <div class="header">
-            <h1>
-                <i class="fas fa-wallet"></i>
-                Gonzalo Pago
-            </h1>
-            <p>Administra tus gastos e ingresos de manera sencilla</p>
-        </div>
-
-        <!-- Mensajes Flash -->
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center min-vh-100">
+    <div class="card shadow-sm p-4 w-100" style="max-width: 400px;">
+        <h2 class="h4 mb-4 text-center">
+            <i class="bi bi-box-arrow-in-right text-primary me-2"></i>
+            Iniciar Sesión
+        </h2>
+        
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category if category != 'error' else 'danger' }}">
-                        <i class="fas fa-{% if category == 'success' %}check-circle{% elif category == 'danger' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
-                        {{ message }}
-                    </div>
-                {% endfor %}
-            {% endif %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                <i class="bi bi-{% if category == 'success' %}check-circle{% elif category == 'danger' %}exclamation-triangle{% else %}info-circle{% endif %} me-2"></i>
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
         {% endwith %}
 
-        <!-- Formulario de Login -->
         <form method="POST" action="{{ url_for('login') }}" id="loginForm">
-            <div class="form-group">
-                <label for="username">
-                    <i class="fas fa-envelope"></i>
-                    Correo Electrónico
+            <div class="mb-3">
+                <label class="form-label">
+                    <i class="bi bi-envelope me-1"></i>Email
+                </label>
+                <input type="email" name="email" class="form-control" 
+                       placeholder="tu@email.com" required autofocus>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">
+                    <i class="bi bi-lock me-1"></i>Contraseña
                 </label>
                 <div class="input-group">
-                    <input 
-                        type="email" 
-                        id="username" 
-                        name="username" 
-                        placeholder="tu@email.com" 
-                        required
-                        autocomplete="email"
-                        value="{{ request.form.username if request.form.username else '' }}"
-                    >
-                </div>
-                <div class="error-message" id="emailError">
-                    Por favor ingresa un email válido
+                    <input type="password" name="password" class="form-control" 
+                           id="password" placeholder="••••••••" required minlength="4">
+                    <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                        <i class="bi bi-eye"></i>
+                    </button>
                 </div>
             </div>
-
-            <div class="form-group">
-                <label for="password">
-                    <i class="fas fa-lock"></i>
-                    Contraseña
-                </label>
-                <div class="input-group">
-                    <input 
-                        type="password" 
-                        id="password" 
-                        name="password" 
-                        placeholder="••••••••" 
-                        required
-                        autocomplete="current-password"
-                        minlength="4"
-                    >
-                    <i class="fas fa-eye toggle-password" onclick="togglePassword()"></i>
-                </div>
-                <div class="error-message" id="passwordError">
-                    La contraseña debe tener al menos 4 caracteres
-                </div>
-            </div>
-
-            <div class="form-help">
-                <label class="remember-me">
-                    <input type="checkbox" name="remember" id="remember">
-                    Recordarme
-                </label>
-                <a href="#" class="forgot-password" onclick="showDemoCredentials(); return false;">
-                    ¿Ver credenciales de demo?
-                </a>
-            </div>
-
-            <div class="loading" id="loading">
-                <div class="spinner"></div>
-                <p style="margin-top: 10px; color: #666;">Iniciando sesión...</p>
-            </div>
-
-            <button type="submit" class="btn-login" id="submitBtn">
-                <i class="fas fa-sign-in-alt"></i>
-                Iniciar Sesión
+            <button type="submit" class="btn btn-primary w-100" id="submitBtn">
+                <span class="spinner-border spinner-border-sm d-none" id="loadingSpinner" role="status"></span>
+                <span id="btnText">Entrar</span>
             </button>
         </form>
-
-        <div class="register-link">
-            ¿No tienes una cuenta? 
-            <a href="{{ url_for('register') }}">
-                Regístrate aquí <i class="fas fa-arrow-right"></i>
+        
+        <p class="text-center mt-3 small">
+            ¿No tienes cuenta? 
+            <a href="{{ url_for('register') }}" class="text-decoration-none">
+                Regístrate <i class="bi bi-arrow-right"></i>
             </a>
-        </div>
-
-        <!-- Credenciales de Demo (ocultas por defecto) -->
-        <div class="demo-credentials" id="demoCredentials" style="display: none;">
-            <p><i class="fas fa-info-circle"></i> Credenciales de prueba:</p>
-            <div class="credential">
-                <i class="fas fa-envelope"></i>
-                <span><strong>Email:</strong> test@test.com</span>
-            </div>
-            <div class="credential">
-                <i class="fas fa-lock"></i>
-                <span><strong>Contraseña:</strong> 123456</span>
-            </div>
-            <p style="font-size: 11px; color: #999; margin-top: 8px;">
-                * Estas credenciales son solo para probar la aplicación
-            </p>
-        </div>
+        </p>
     </div>
+</div>
 
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<script>
+document.getElementById('togglePassword').addEventListener('click', function() {
+    const password = document.getElementById('password');
+    const icon = this.querySelector('i');
+    
+    if (password.type === 'password') {
+        password.type = 'text';
+        icon.classList.remove('bi-eye');
+        icon.classList.add('bi-eye-slash');
+    } else {
+        password.type = 'password';
+        icon.classList.remove('bi-eye-slash');
+        icon.classList.add('bi-eye');
+    }
+});
 
-    <script>
-        // Función para mostrar/ocultar contraseña
-        function togglePassword() {
-            const passwordInput = document.getElementById('password');
-            const toggleIcon = document.querySelector('.toggle-password');
-            
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                toggleIcon.classList.remove('fa-eye');
-                toggleIcon.classList.add('fa-eye-slash');
-            } else {
-                passwordInput.type = 'password';
-                toggleIcon.classList.remove('fa-eye-slash');
-                toggleIcon.classList.add('fa-eye');
-            }
-        }
-
-        // Función para mostrar credenciales de demo
-        function showDemoCredentials() {
-            const demoDiv = document.getElementById('demoCredentials');
-            if (demoDiv.style.display === 'none' || demoDiv.style.display === '') {
-                demoDiv.style.display = 'block';
-                demoDiv.style.animation = 'slideUp 0.3s ease';
-            } else {
-                demoDiv.style.display = 'none';
-            }
-        }
-
-        // Validación del formulario
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            console.log('🔍 Formulario enviado');
-            
-            const email = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-            const emailError = document.getElementById('emailError');
-            const passwordError = document.getElementById('passwordError');
-            const loading = document.getElementById('loading');
-            const submitBtn = document.getElementById('submitBtn');
-            
-            // Resetear errores
-            emailError.classList.remove('show');
-            passwordError.classList.remove('show');
-            
-            let isValid = true;
-            
-            // Validar email
-            if (!email) {
-                emailError.textContent = 'El email es requerido';
-                emailError.classList.add('show');
-                isValid = false;
-            } else if (!email.includes('@') || !email.includes('.')) {
-                emailError.textContent = 'Ingresa un email válido';
-                emailError.classList.add('show');
-                isValid = false;
-            }
-            
-            // Validar password
-            if (!password) {
-                passwordError.textContent = 'La contraseña es requerida';
-                passwordError.classList.add('show');
-                isValid = false;
-            } else if (password.length < 4) {
-                passwordError.textContent = 'La contraseña debe tener al menos 4 caracteres';
-                passwordError.classList.add('show');
-                isValid = false;
-            }
-            
-            // Si no es válido, prevenir envío
-            if (!isValid) {
-                e.preventDefault();
-                return false;
-            }
-            
-            // Mostrar loading
-            loading.classList.add('show');
-            submitBtn.disabled = true;
-            submitBtn.style.opacity = '0.5';
-            
-            console.log('✅ Datos válidos - Enviando:', { email, password });
-            
-            // El formulario se enviará normalmente
-            return true;
-        });
-
-        // Auto-completar credenciales de demo (opcional)
-        function fillDemoCredentials() {
-            document.getElementById('username').value = 'test@test.com';
-            document.getElementById('password').value = '123456';
-        }
-
-        // Mostrar/ocultar demo credentials con animación
-        document.addEventListener('DOMContentLoaded', function() {
-            // Si hay parámetros en la URL, auto-completar? (para pruebas)
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('demo') === 'true') {
-                fillDemoCredentials();
-            }
-            
-            // Log para debug
-            console.log('📝 Página de login cargada');
-            console.log('Session:', {{ session | tojson }});
-        });
-
-        // Prevenir re-envío del formulario con F5
-        window.addEventListener('keydown', function(e) {
-            if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
-                if (document.getElementById('loading').classList.contains('show')) {
-                    e.preventDefault();
-                    return false;
-                }
-            }
-        });
-    </script>
-
-    <!-- Script adicional para debug -->
-    <script>
-        // Interceptar el envío del formulario para debug
-        const originalSubmit = document.getElementById('loginForm').submit;
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            console.log('🚀 Evento submit disparado');
-            console.log('Form data:', {
-                username: document.getElementById('username').value,
-                password: document.getElementById('password').value ? '****' : 'vacío'
-            });
-        });
-    </script>
-</body>
-</html>
+document.getElementById('loginForm').addEventListener('submit', function() {
+    document.getElementById('loadingSpinner').classList.remove('d-none');
+    document.getElementById('btnText').textContent = 'Ingresando...';
+    document.getElementById('submitBtn').disabled = true;
+});
+</script>
+{% endblock %}
