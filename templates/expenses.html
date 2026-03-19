@@ -34,40 +34,84 @@
         </div>
 
         <div class="col-md-8">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title mb-3">Historial de Gastos</h5>
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Descripción</th>
-                                    <th>Categoría</th>
-                                    <th>Monto</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% if gastos_lista %}
-                                    {% for g in gastos_lista %}
-                                    <tr>
-                                        <td>{{ g.descripcion }}</td>
-                                        <td>
-                                            <span class="badge bg-secondary">
-                                                {{ g.categorias_gastos.nombre if g.categorias_gastos else 'S/C' }}
-                                            </span>
-                                        </td>
-                                        <td class="text-danger fw-bold">-${{ "%.2f"|format(g.monto|float) }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted">No hay gastos registrados.</td>
-                                    </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Historial de Gastos</h5>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Descripción</th>
+                            <th>Categoría</th>
+                            <th>Monto</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if gastos_lista %}
+                            {% for g in gastos_lista %}
+                            <tr>
+                                <td>{{ g.descripcion }}</td>
+                                <td>
+                                    <span class="badge bg-secondary">
+                                        {{ g.categorias_gastos.nombre if g.categorias_gastos else 'S/C' }}
+                                    </span>
+                                </td>
+                                <td class="text-danger fw-bold">-${{ "%.2f"|format(g.monto|float) }}</td>
+                                <td class="text-end">
+                                    <div class="btn-group">
+                                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ g.id }}">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <a href="{{ url_for('eliminar_gasto', id=g.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Borrar registro?')">
+                                            <i class="bi bi-trash"></i>
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            <div class="modal fade" id="editModal{{ g.id }}" tabindex="-1" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Editar Gasto</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <form action="{{ url_for('editar_gasto', id=g.id) }}" method="POST">
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label">Descripción</label>
+                                                    <input type="text" name="descripcion" class="form-control" value="{{ g.descripcion }}" required>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Monto</label>
+                                                    <input type="number" step="0.01" name="monto" class="form-control" value="{{ g.monto }}" required>
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label">Categoría</label>
+                                                    <select name="categoria_id" class="form-select" required>
+                                                        {% for cat in categorias %}
+                                                        <option value="{{ cat.id }}" {% if cat.id == g.categoria_id %}selected{% endif %}>
+                                                            {{ cat.nombre }}
+                                                        </option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <tr><td colspan="4" class="text-center text-muted">No hay registros.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
