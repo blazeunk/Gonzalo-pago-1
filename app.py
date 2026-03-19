@@ -2,6 +2,9 @@ import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
+import pandas as pd
+from io import BytesIO
+from flask import send_file
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "pago_gonzalo_2026_key")
@@ -83,8 +86,19 @@ def register():
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
-    ctx = obtener_contexto_financiero(session['user_id'])
-    return render_template('dashboard.html', active_page='dashboard', **ctx)
+
+    # Obtener sumas por categoría para el gráfico
+    gastos = supabase.table("gastos").select("monto, categorias_gastos(nombre)").eq("usuario_id", session['user_id']).execute().data
+    
+    # Agrupar datos para el gráfico
+    resumen = {}
+    for g in gastos:
+        cat = g['categorias_gastos']['nombre'] if g['categorias_gastos'] else "Otros"
+        resumen[cat] = resumen.get(cat, 0) + float(g['monto'])
+    
+    return render_template('dashboard.html', 
+                           labels=list(resumen.keys()), 
+                           values=list(resumen.values()))
 
 @app.route('/expenses')
 def pagina_gastos():
@@ -161,6 +175,29 @@ def editar_ingreso(id):
     }).eq("id", id).execute()
     
     return redirect(url_for('pagina_ingresos'))
+    @app.route('/exportar_excel')
+def exportar_excel():
+    if 'user_id' not in session: return redirect(url_for('login'))
+
+    # Traer todos los gastos e ingresos
+    gastos = supabase.table("gastos").select("descripcion, monto, fecha").eq("usuario_id", session['user_id']).execute().data
+    ingresos = supabase.table("ingresos").select("descripcion, monto, fecha").eq("usuario_id", session['user_id']).execute().data
+
+    # Crear DataFrames
+    df_gastos = pd.DataFrame(gastos)
+    df_ingresos = pd.DataFrame(ingresos)
+
+    # Crear el archivo Excel en memoria
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_gastos.to_excel(writer, index=False, sheet_name='Gastos')
+        df_ingresos.to_excel(writer, index=False, sheet_name='Ingresos')
+    
+    output.seek(0)
+    
+    return send_file(output, 
+                     download_name="Mi_Presupuesto_2026.xlsx", 
+                     as_attachment=True)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
