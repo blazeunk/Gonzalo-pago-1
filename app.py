@@ -6,92 +6,53 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
-# 1. Cargar variables de entorno
 load_dotenv()
 
 app = Flask(__name__)
-# Usa la clave del config original o una por defecto
 app.secret_key = os.environ.get("SECRET_KEY", "476d47eca2452cdd4519aa1bb823fe51b2d409462bf2cbd4152cacfc7959a9da")
 
-# 2. Configuración de Base de Datos (PostgreSQL / Supabase)
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
-    """Establece conexión con Supabase usando RealDictCursor."""
+    """Conecta a la base de datos de forma segura."""
+    conn = None
+    cur = None
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        # IMPORTANTE: Asegúrate de que DATABASE_URL sea la cadena correcta de Supabase
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
         cur = conn.cursor(cursor_factory=RealDictCursor)
         return conn, cur
     except Exception as e:
         print(f"❌ Error de conexión: {e}")
         return None, None
 
-# ================================================================
-# MIDDLEWARE - PROTECCIÓN DE RUTAS
-# ================================================================
-
-@app.before_request
-def require_login():
-    public_routes = ['login', 'register', 'inicio', 'static']
-    if request.endpoint in public_routes:
-        return
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-
-# ================================================================
-# FUNCIONES AUXILIARES (Adaptadas para PostgreSQL)
-# ================================================================
-
-def calcular_totales(user_id):
-    conn, cur = get_db_connection()
-    if not cur: return {}
-    
-    # Cálculos usando sintaxis PostgreSQL (EXTRACT en vez de MONTH/YEAR)
-    queries = {
-        "weekly_income": "SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE user_id = %s AND fecha >= CURRENT_DATE - INTERVAL '7 days'",
-        "weekly_exp": "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE user_id = %s AND fecha >= CURRENT_DATE - INTERVAL '7 days'",
-        "monthly_income": "SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE user_id = %s AND EXTRACT(MONTH FROM fecha) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fecha) = EXTRACT(YEAR FROM CURRENT_DATE)",
-        "monthly_exp": "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE user_id = %s AND EXTRACT(MONTH FROM fecha) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM fecha) = EXTRACT(YEAR FROM CURRENT_DATE)",
-        "total_income": "SELECT COALESCE(SUM(monto), 0) FROM ingresos WHERE user_id = %s",
-        "total_exp": "SELECT COALESCE(SUM(monto), 0) FROM gastos WHERE user_id = %s"
-    }
-    
-    resultados = {}
-    for key, sql in queries.items():
-        cur.execute(sql, (user_id,))
-        val = cur.fetchone()
-        # En RealDictCursor, el resultado es un dict, pero las funciones de agregación a veces no tienen nombre
-        resultados[key] = float(list(val.values())[0])
-    
-    cur.close(); conn.close()
-    return resultados
-
-# ================================================================
-# AUTENTICACIÓN
-# ================================================================
-
-@app.route("/")
-def inicio():
-    return redirect(url_for("login"))
-
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        email, password = request.form.get("email"), request.form.get("password")
-        if email and password:
-            hashed_pw = generate_password_hash(password)
-            conn, cur = get_db_connection()
-            try:
-                cur.execute("INSERT INTO users (email, password) VALUES (%s, %s)", (email, hashed_pw))
-                conn.commit()
-                flash("Registro exitoso", "success")
-                return redirect(url_for("login"))
-            except:
-                flash("El email ya existe", "danger")
-            finally:
-                cur.close(); conn.close()
-    return render_template("register.html")
+        email = request.form.get("email")
+        password = request.form.get("password")
+        
+        conn, cur = get_db_connection()
+        
+        if conn is None:
+            flash("Error de conexión con la base de datos. Intenta más tarde.", "danger")
+            return redirect(url_for("register"))
 
+        try:
+            hashed_pw = generate_password_hash(password)
+            cur.execute("INSERT INTO users (email, password) VALUES (%s, %s)", (email, hashed_pw))
+            conn.commit()
+            flash("Registro exitoso", "success")
+            return redirect(url_for("login"))
+        except Exception as e:
+            print(f"Error en el insert: {e}")
+            flash("El email ya existe o hubo un error interno.", "danger")
+        finally:
+            # CORRECCIÓN: Solo cerramos si existen
+            if cur: cur.close()
+            if conn: conn.close()
+            
+    return render_template("register.html")
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
