@@ -9,20 +9,33 @@ import psycopg2.extras
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import dotenv
 
 app = Flask(__name__)
 
 # ================================================================
 # CONFIGURACIÓN (Variables de entorno de Render)
 # ================================================================
+# Esto es clave:
+dotenv.load_dotenv()
+
+# Intenta obtenerlas del sistema directamente
+url = os.environ.get("SUPABASE_URL")
+key = os.environ.get("SUPABASE_KEY")
+
+# Si esto falla, imprime qué está viendo (sin mostrar la key completa por seguridad)
+if not url or not key:
+    print(f"DEBUG: URL encontrada: {bool(url)}")
+    print(f"DEBUG: KEY encontrada: {bool(key)}")
+    raise ValueError("❌ Error: Faltan variables de entorno en el sistema")
 
 app.secret_key = os.environ.get('SECRET_KEY', '476d47eca2452cdd4519aa1bb823fe51b2d409462bf2cbd4152cacfc7959a9da')
 
 # Configuración de Supabase desde Render (Environment Variables)
-DB_HOST = os.environ.get('DB_HOST, db.tfbmocasekfjkayidwqu.supabase.co')
+DB_HOST = os.environ.get('DB_HOST')
 DB_NAME = os.environ.get('DB_NAME', 'postgres')
 DB_USER = os.environ.get('DB_USER', 'postgres')
-DB_PASSWORD = os.environ.get('DB_PASSWORD, eNvTRyviEE1P1BIu')
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_PORT = os.environ.get('DB_PORT', '5432')
 
 # Validación básica de variables
