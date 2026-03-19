@@ -3,7 +3,7 @@
 <div class="container mt-4">
     <div class="row">
         <div class="col-md-4">
-            <div class="card shadow-sm">
+            <div class="card shadow-sm mb-4">
                 <div class="card-header bg-danger text-white">
                     <h5 class="mb-0">Añadir Gasto</h5>
                 </div>
@@ -35,32 +35,34 @@
         <div class="col-md-8">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <h5 class="card-title">Historial de Gastos</h5>
+                    <h5 class="card-title mb-3">Historial de Gastos</h5>
                     <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
                                 <tr>
                                     <th>Descripción</th>
                                     <th>Categoría</th>
                                     <th>Monto</th>
-                                    <th>Acción</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for gasto in gastos_lista %}
-                                <tr>
-                                    <td>{{ gasto.descripcion }}</td>
-                                    <td>
-                                        <span class="badge bg-secondary">
-                                            {{ gasto.categorias_gastos.nombre if gasto.categorias_gastos else 'Sin categoría' }}
-                                        </span>
-                                    </td>
-                                    <td class="text-danger">-${{ "%.2f"|format(gasto.monto) }}</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-secondary">Eliminar</button>
-                                    </td>
-                                </tr>
-                                {% endfor %}
+                                {% if gastos_lista %}
+                                    {% for g in gastos_lista %}
+                                    <tr>
+                                        <td>{{ g.descripcion }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary">
+                                                {{ g.categorias_gastos.nombre if g.categorias_gastos else 'S/C' }}
+                                            </span>
+                                        </td>
+                                        <td class="text-danger fw-bold">-${{ "%.2f"|format(g.monto|float) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted">No hay gastos registrados.</td>
+                                    </tr>
+                                {% endif %}
                             </tbody>
                         </table>
                     </div>
@@ -69,5 +71,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
 {% endblock %}
