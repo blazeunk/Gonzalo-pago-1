@@ -1,203 +1,182 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, send_file
 from supabase import create_client, Client
-from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
 import pandas as pd
 from io import BytesIO
-from flask import send_file
+
+# Cargar variables de entorno
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "pago_gonzalo_2026_key")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "tu_clave_secreta_aqui")
 
-# --- CONFIGURACIÓN SUPABASE ---
-supabase_url = os.environ.get("SUPABASE_URL", "").strip()
-supabase_key = os.environ.get("SUPABASE_KEY", "").strip()
-supabase: Client = create_client(supabase_url, supabase_key)
+# Configuración de Supabase
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
 
-def obtener_contexto_financiero(user_id):
-    try:
-        # Traemos datos con joins para las categorías
-        res_g = supabase.table("gastos").select("*, categorias_gastos(nombre)").eq("user_id", user_id).execute()
-        res_i = supabase.table("ingresos").select("*, categorias_ingresos(nombre)").eq("user_id", user_id).execute()
-        
-        gastos = res_g.data or []
-        ingresos = res_i.data or []
-        
-        sum_ingresos = sum(float(i.get('monto', 0)) for i in ingresos)
-        sum_gastos = sum(float(g.get('monto', 0)) for g in gastos)
-        balance = sum_ingresos - sum_gastos
-        
-        # Combinamos ambas listas para el historial del dashboard si es necesario
-        todos_los_pagos = gastos + ingresos
-
-        return {
-            "total_income": sum_ingresos,
-            "total_expenses": sum_gastos,
-            "total_exp": sum_gastos,  # <--- AGREGADO PARA EVITAR EL ERROR JINJA2
-            "total_balance": balance,
-            "weekly_income": sum_ingresos / 4,
-            "monthly_income": sum_ingresos,
-            "weekly_exp": sum_gastos / 4,
-            "monthly_exp": sum_gastos,
-            "total_savings": max(0, balance),
-            "gastos_lista": gastos,
-            "ingresos_lista": ingresos,
-            "pagos": todos_los_pagos, # Para compatibilidad con tablas generales
-            "user_email": session.get('email', 'Usuario')
-        }
-    except Exception as e:
-        print(f"Error: {e}")
-        return {
-            "total_income": 0, "total_expenses": 0, "total_exp": 0, 
-            "total_balance": 0, "weekly_income": 0, "monthly_income": 0,
-            "weekly_exp": 0, "monthly_exp": 0, "total_savings": 0,
-            "gastos_lista": [], "ingresos_lista": [], "pagos": [],
-            "user_email": "Usuario"
-        }
+# --- RUTAS DE AUTENTICACIÓN ---
 
 @app.route('/')
 def index():
-    return redirect(url_for('dashboard')) if 'user_id' in session else redirect(url_for('login'))
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email', '').lower().strip()
+        email = request.form.get('email')
         password = request.form.get('password')
-        res = supabase.table("users").select("*").eq("email", email).execute()
-        user = res.data[0] if res.data else None
-        if user and check_password_hash(user['password'], password):
-            session.update({'user_id': user['id'], 'email': user['email']})
+        try:
+            res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            session['user_id'] = res.user.id
             return redirect(url_for('dashboard'))
-        flash("Email o contraseña incorrectos", "danger")
+        except Exception as e:
+            return render_template('login.html', error="Credenciales inválidas")
     return render_template('login.html')
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        email = request.form.get('email', '').lower().strip()
-        hashed = generate_password_hash(request.form.get('password'))
-        try:
-            supabase.table("users").insert({"email": email, "password": hashed}).execute()
-            return redirect(url_for('login'))
-        except: flash("El usuario ya existe", "danger")
-    return render_template('register.html')
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('login'))
+
+# --- DASHBOARD Y GRÁFICOS ---
 
 @app.route('/dashboard')
 def dashboard():
-    if 'user_id' not in session: return redirect(url_for('login'))
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
-    # Obtener sumas por categoría para el gráfico
-    gastos = supabase.table("gastos").select("monto, categorias_gastos(nombre)").eq("usuario_id", session['user_id']).execute().data
+    user_id = session['user_id']
     
-    # Agrupar datos para el gráfico
+    # Obtener gastos para el gráfico (incluyendo el nombre de la categoría)
+    gastos_res = supabase.table("gastos").select("monto, categorias_gastos(nombre)").eq("usuario_id", user_id).execute()
+    gastos = gastos_res.data
+    
+    # Agrupar datos por categoría
     resumen = {}
+    total_gastos = 0
     for g in gastos:
-        cat = g['categorias_gastos']['nombre'] if g['categorias_gastos'] else "Otros"
-        resumen[cat] = resumen.get(cat, 0) + float(g['monto'])
-    
+        cat_nombre = g['categorias_gastos']['nombre'] if g['categorias_gastos'] else "Otros"
+        monto = float(g['monto'])
+        resumen[cat_nombre] = resumen.get(cat_nombre, 0) + monto
+        total_gastos += monto
+
+    # Obtener total de ingresos
+    ingresos_res = supabase.table("ingresos").select("monto").eq("usuario_id", user_id).execute()
+    total_ingresos = sum(float(i['monto']) for i in ingresos_res.data)
+
     return render_template('dashboard.html', 
                            labels=list(resumen.keys()), 
-                           values=list(resumen.values()))
+                           values=list(resumen.values()),
+                           total_ingresos=total_ingresos,
+                           total_gastos=total_gastos,
+                           balance=total_ingresos - total_gastos)
+
+# --- GESTIÓN DE GASTOS ---
 
 @app.route('/expenses')
 def pagina_gastos():
     if 'user_id' not in session: return redirect(url_for('login'))
-    ctx = obtener_contexto_financiero(session['user_id'])
-    cats = supabase.table("categorias_gastos").select("*").execute().data
-    return render_template('expenses.html', active_page='expenses', categorias=cats, **ctx)
-
-@app.route('/incomes')
-def pagina_ingresos():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    ctx = obtener_contexto_financiero(session['user_id'])
-    cats = supabase.table("categorias_ingresos").select("*").execute().data
-    return render_template('incomes.html', active_page='incomes', categorias=cats, **ctx)
+    user_id = session['user_id']
+    
+    gastos = supabase.table("gastos").select("*, categorias_gastos(nombre)").eq("usuario_id", user_id).order("id").execute().data
+    categorias = supabase.table("categorias_gastos").select("*").execute().data
+    return render_template('expenses.html', gastos_lista=gastos, categorias=categorias)
 
 @app.route('/add_expense', methods=['POST'])
 def agregar_gasto():
     if 'user_id' not in session: return redirect(url_for('login'))
     supabase.table("gastos").insert({
-        "user_id": session['user_id'],
         "descripcion": request.form.get('descripcion'),
         "monto": float(request.form.get('monto')),
-        "categoria_id": int(request.form.get('categoria_id'))
+        "categoria_id": int(request.form.get('categoria_id')),
+        "usuario_id": session['user_id']
     }).execute()
     return redirect(url_for('pagina_gastos'))
-
-@app.route('/add_income', methods=['POST'])
-def agregar_income():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    supabase.table("ingresos").insert({
-        "user_id": session['user_id'],
-        "descripcion": request.form.get('descripcion'),
-        "monto": float(request.form.get('monto')),
-        "categoria_id": int(request.form.get('categoria_id'))
-    }).execute()
-    return redirect(url_for('pagina_ingresos'))
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
-
-# --- ELIMINAR ---
-@app.route('/delete_expense/<int:id>')
-def eliminar_gasto(id):
-    supabase.table("gastos").delete().eq("id", id).execute()
-    return redirect(url_for('pagina_gastos'))
-
-@app.route('/delete_income/<int:id>')
-def eliminar_ingreso(id):
-    supabase.table("ingresos").delete().eq("id", id).execute()
-    return redirect(url_for('pagina_ingresos'))
 
 @app.route('/edit_expense/<int:id>', methods=['POST'])
 def editar_gasto(id):
     if 'user_id' not in session: return redirect(url_for('login'))
-    
     supabase.table("gastos").update({
         "descripcion": request.form.get('descripcion'),
         "monto": float(request.form.get('monto')),
         "categoria_id": int(request.form.get('categoria_id'))
     }).eq("id", id).execute()
-    
     return redirect(url_for('pagina_gastos'))
+
+@app.route('/delete_expense/<int:id>')
+def eliminar_gasto(id):
+    if 'user_id' not in session: return redirect(url_for('login'))
+    supabase.table("gastos").delete().eq("id", id).execute()
+    return redirect(url_for('pagina_gastos'))
+
+# --- GESTIÓN DE INGRESOS ---
+
+@app.route('/incomes')
+def pagina_incomes():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    user_id = session['user_id']
+    
+    ingresos = supabase.table("ingresos").select("*, categorias_ingresos(nombre)").eq("usuario_id", user_id).order("id").execute().data
+    categorias = supabase.table("categorias_ingresos").select("*").execute().data
+    return render_template('incomes.html', ingresos_lista=ingresos, categorias=categorias)
+
+@app.route('/add_income', methods=['POST'])
+def agregar_income():
+    if 'user_id' not in session: return redirect(url_for('login'))
+    supabase.table("ingresos").insert({
+        "descripcion": request.form.get('descripcion'),
+        "monto": float(request.form.get('monto')),
+        "categoria_id": int(request.form.get('categoria_id')),
+        "usuario_id": session['user_id']
+    }).execute()
+    return redirect(url_for('pagina_incomes'))
 
 @app.route('/edit_income/<int:id>', methods=['POST'])
 def editar_ingreso(id):
     if 'user_id' not in session: return redirect(url_for('login'))
-    
     supabase.table("ingresos").update({
         "descripcion": request.form.get('descripcion'),
         "monto": float(request.form.get('monto')),
         "categoria_id": int(request.form.get('categoria_id'))
     }).eq("id", id).execute()
-    
-    return redirect(url_for('pagina_ingresos'))
-    @app.route('/exportar_excel')
-def exportar_excel():
+    return redirect(url_for('pagina_incomes'))
+
+@app.route('/delete_income/<int:id>')
+def eliminar_ingreso(id):
     if 'user_id' not in session: return redirect(url_for('login'))
+    supabase.table("ingresos").delete().eq("id", id).execute()
+    return redirect(url_for('pagina_incomes'))
 
-    # Traer todos los gastos e ingresos
-    gastos = supabase.table("gastos").select("descripcion, monto, fecha").eq("usuario_id", session['user_id']).execute().data
-    ingresos = supabase.table("ingresos").select("descripcion, monto, fecha").eq("usuario_id", session['user_id']).execute().data
+# --- EXPORTAR A EXCEL ---
 
-    # Crear DataFrames
-    df_gastos = pd.DataFrame(gastos)
-    df_ingresos = pd.DataFrame(ingresos)
+@app.route('/exportar_excel')
+def exportar_excel():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
-    # Crear el archivo Excel en memoria
+    user_id = session['user_id']
+    gastos = supabase.table("gastos").select("descripcion, monto, fecha").eq("usuario_id", user_id).execute().data
+    ingresos = supabase.table("ingresos").select("descripcion, monto, fecha").eq("usuario_id", user_id).execute().data
+
+    df_gastos = pd.DataFrame(gastos) if gastos else pd.DataFrame(columns=["descripcion", "monto", "fecha"])
+    df_ingresos = pd.DataFrame(ingresos) if ingresos else pd.DataFrame(columns=["descripcion", "monto", "fecha"])
+
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_gastos.to_excel(writer, index=False, sheet_name='Gastos')
         df_ingresos.to_excel(writer, index=False, sheet_name='Ingresos')
     
     output.seek(0)
-    
-    return send_file(output, 
-                     download_name="Mi_Presupuesto_2026.xlsx", 
-                     as_attachment=True)
+    return send_file(
+        output, 
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        download_name="Mi_Presupuesto.xlsx", 
+        as_attachment=True
+    )
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
+    app.run(debug=True)
