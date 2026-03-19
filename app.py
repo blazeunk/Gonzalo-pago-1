@@ -38,11 +38,6 @@ DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_PORT = os.environ.get('DB_PORT', '5432')
 
-# Validación básica de variables
-if not DB_HOST or not DB_PASSWORD:
-    raise RuntimeError("❌ Faltan variables de entorno de Supabase. Revisa Render Dashboard > Environment Variables")
-
-
 # ================================================================
 # CONEXIÓN A BASE DE DATOS
 # ================================================================
