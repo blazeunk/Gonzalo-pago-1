@@ -14,16 +14,23 @@ app.secret_key = os.environ.get("SECRET_KEY", "476d47eca2452cdd4519aa1bb823fe51b
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db_connection():
-    """Conecta a la base de datos de forma segura."""
     conn = None
     cur = None
     try:
-        # IMPORTANTE: Asegúrate de que DATABASE_URL sea la cadena correcta de Supabase
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require', connect_timeout=10)
+        db_url = os.environ.get("DATABASE_URL")
+        
+        # Si la URL tiene parámetros que psycopg2 no entiende, 
+        # esta forma de conectar suele ser más tolerante:
+        conn = psycopg2.connect(db_url, sslmode='require')
+        
+        # Configuramos para que los cambios se guarden automáticamente
+        conn.autocommit = True 
+        
         cur = conn.cursor(cursor_factory=RealDictCursor)
         return conn, cur
     except Exception as e:
-        print(f"❌ Error de conexión: {e}")
+        # Esto saldrá en tus logs de Render si vuelve a fallar
+        print(f"❌ Error detallado de conexión: {e}")
         return None, None
 
 @app.route("/")
