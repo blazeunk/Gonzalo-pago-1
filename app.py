@@ -1,6 +1,6 @@
 """
-Gonzalo Pago - Versión Producción (Supabase + Render)
-Adaptado para Android con Capacitor
+Gonzalo Pago - Versión Producción para Render + Supabase
+Adaptada específicamente para evitar errores de psycopg2 en Render
 """
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
@@ -13,32 +13,43 @@ import os
 app = Flask(__name__)
 
 # ================================================================
-# CONFIGURACIÓN (Variables de entorno para Render)
+# CONFIGURACIÓN (Variables de entorno de Render)
 # ================================================================
 
 app.secret_key = os.environ.get('SECRET_KEY', '476d47eca2452cdd4519aa1bb823fe51b2d409462bf2cbd4152cacfc7959a9da')
 
-# Configuración de Supabase desde variables de entorno (RECOMENDADO en Render)
+# Configuración de Supabase desde Render (Environment Variables)
 DB_HOST = os.environ.get('DB_HOST')
 DB_NAME = os.environ.get('DB_NAME', 'postgres')
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASSWORD = os.environ.get('DB_PASSWORD')
 DB_PORT = os.environ.get('DB_PORT', '5432')
 
+# Validación básica de variables
+if not DB_HOST or not DB_PASSWORD:
+    raise RuntimeError("❌ Faltan variables de entorno de Supabase. Revisa Render Dashboard > Environment Variables")
+
+
 # ================================================================
 # CONEXIÓN A BASE DE DATOS
 # ================================================================
 
 def get_db_connection():
-    """Crea conexión a Supabase"""
-    return psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        port=DB_PORT,
-        cursor_factory=psycopg2.extras.DictCursor
-    )
+    """Retorna una nueva conexión a Supabase"""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            port=DB_PORT,
+            cursor_factory=psycopg2.extras.DictCursor,
+            connect_timeout=10
+        )
+        return conn
+    except Exception as e:
+        print(f"Error de conexión a Supabase: {e}")
+        raise
 
 
 # ================================================================
@@ -274,7 +285,7 @@ def pagina_ingresos():
 
 
 # ================================================================
-# CRUD BÁSICO
+# CRUD
 # ================================================================
 
 @app.route("/add_expense", methods=["POST"])
@@ -352,7 +363,7 @@ def eliminar_ingreso(id):
 
 
 # ================================================================
-# INICIO DE LA APLICACIÓN
+# INICIO
 # ================================================================
 
 if __name__ == "__main__":
