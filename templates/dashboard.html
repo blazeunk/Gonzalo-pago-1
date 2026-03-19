@@ -118,58 +118,19 @@
 </div>
 
 <!-- Script Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-$(document).ready(function () {
-    const colores = ['#dc3545', '#fd7e14', '#ffc107', '#198754', '#0d6efd', '#6f42c1', '#d63384', '#20c997', '#6610f2', '#adb5bd'];
-
-    // Gráfico Gastos
-    {% if gastos_labels and gastos_data %}
-    new Chart(document.getElementById('gastosPieChart'), {
-        type: 'pie',
+    const ctx = document.getElementById('myChart');
+    new Chart(ctx, {
+        type: 'doughnut', // Puede ser 'bar' o 'pie'
         data: {
-            labels: {{ gastos_labels | tojson }},
+            labels: {{ labels|tojson }},
             datasets: [{
-                data: {{ gastos_data | tojson }},
-                backgroundColor: colores,
-                borderWidth: 2,
-                borderColor: $('html').attr('data-bs-theme') === 'dark' ? '#1e1e1e' : '#ffffff'
+                data: {{ values|tojson }},
+                backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF']
             }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom' },
-                tooltip: { enabled: true }
-            }
         }
     });
-    {% endif %}
-
-    // Gráfico Ingresos
-    {% if ingresos_labels and ingresos_data %}
-    new Chart(document.getElementById('ingresosPieChart'), {
-        type: 'pie',
-        data: {
-            labels: {{ ingresos_labels | tojson }},
-            datasets: [{
-                data: {{ ingresos_data | tojson }},
-                backgroundColor: colores,
-                borderWidth: 2,
-                borderColor: $('html').attr('data-bs-theme') === 'dark' ? '#1e1e1e' : '#ffffff'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom' },
-                tooltip: { enabled: true }
-            }
-        }
-    });
-    {% endif %}
-});
 </script>
 
 {% endblock %}
