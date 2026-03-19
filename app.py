@@ -17,21 +17,42 @@ except Exception as e:
     supabase = None
 
 def obtener_contexto_financiero(user_id):
+    """Extrae y calcula todos los datos necesarios para el Dashboard y Tablas."""
     try:
         res = supabase.table("gastos").select("*").eq("user_id", user_id).execute()
         datos = res.data or []
+        
+        # Filtramos montos por estado
         sum_pagado = sum(float(p.get('monto', 0)) for p in datos if p.get('estado') == 'pagado')
         sum_pendiente = sum(float(p.get('monto', 0)) for p in datos if p.get('estado') == 'pendiente')
+        
+        total_balance = sum_pagado - sum_pendiente
+        
         return {
-            "total_income": sum_pagado,
-            "total_expenses": sum_pendiente,
-            "total_exp": sum_pendiente,
-            "total_balance": sum_pagado - sum_pendiente,
+            "total_income": sum_pagado,       # Ingresos totales
+            "total_expenses": sum_pendiente, # Gastos totales
+            "total_exp": sum_pendiente,      # Alias para compatibilidad
+            "total_balance": total_balance,
+            
+            # Cálculos temporales (estimados sobre los datos actuales)
+            "weekly_income": sum_pagado / 4,
+            "monthly_income": sum_pagado,
+            "weekly_exp": sum_pendiente / 4,
+            "monthly_exp": sum_pendiente,
+            "total_savings": max(0, total_balance),
+            
             "pagos": datos,
             "user_email": session.get('email', 'Usuario')
         }
-    except:
-        return {"total_income":0.0, "total_exp":0.0, "total_expenses":0.0, "pagos":[]}
+    except Exception as e:
+        print(f"Error en cálculos: {e}")
+        # Retorno de emergencia con ceros para no romper el HTML
+        return {
+            "total_income": 0.0, "total_expenses": 0.0, "total_exp": 0.0,
+            "total_balance": 0.0, "weekly_income": 0.0, "monthly_income": 0.0,
+            "weekly_exp": 0.0, "monthly_exp": 0.0, "total_savings": 0.0,
+            "pagos": [], "user_email": "Usuario"
+        }
 
 # --- RUTAS DE SESIÓN ---
 
