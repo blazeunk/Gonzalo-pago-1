@@ -12,9 +12,7 @@ supabase_key = os.environ.get("SUPABASE_KEY", "").strip()
 supabase: Client = create_client(supabase_url, supabase_key)
 
 def obtener_contexto_financiero(user_id):
-    """Calcula saldos y obtiene listas de gastos/ingresos con sus categorías."""
     try:
-        # Consulta con JOIN para obtener el nombre de la categoría directamente
         res_g = supabase.table("gastos").select("*, categorias_gastos(nombre)").eq("user_id", user_id).execute()
         res_i = supabase.table("ingresos").select("*, categorias_ingresos(nombre)").eq("user_id", user_id).execute()
         
@@ -39,15 +37,8 @@ def obtener_contexto_financiero(user_id):
             "user_email": session.get('email', 'Usuario')
         }
     except Exception as e:
-        print(f"Error en contexto financiero: {e}")
-        return {
-            "total_income": 0, "total_expenses": 0, "total_balance": 0,
-            "weekly_income": 0, "monthly_income": 0, "weekly_exp": 0, "monthly_exp": 0,
-            "total_savings": 0, "gastos_lista": [], "ingresos_lista": [],
-            "user_email": "Usuario"
-        }
-
-# --- RUTAS DE NAVEGACIÓN Y SESIÓN ---
+        print(f"Error: {e}")
+        return {"total_income":0, "total_expenses":0, "total_balance":0, "gastos_lista":[], "ingresos_lista":[]}
 
 @app.route('/')
 def index():
@@ -60,7 +51,6 @@ def login():
         password = request.form.get('password')
         res = supabase.table("users").select("*").eq("email", email).execute()
         user = res.data[0] if res.data else None
-        
         if user and check_password_hash(user['password'], password):
             session.update({'user_id': user['id'], 'email': user['email']})
             return redirect(url_for('dashboard'))
@@ -71,58 +61,58 @@ def login():
 def register():
     if request.method == 'POST':
         email = request.form.get('email', '').lower().strip()
-        password = request.form.get('password')
-        hashed = generate_password_hash(password)
+        hashed = generate_password_hash(request.form.get('password'))
         try:
             supabase.table("users").insert({"email": email, "password": hashed}).execute()
-            flash("Registro exitoso, por favor inicia sesión", "success")
             return redirect(url_for('login'))
-        except:
-            flash("Error: El usuario ya existe", "danger")
+        except: flash("El usuario ya existe", "danger")
     return render_template('register.html')
-
-# --- RUTAS DE CONTENIDO ---
 
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
-    ctx = obtener_contexto_financiero(session['user_id'])
-    return render_template('dashboard.html', active_page='dashboard', **ctx)
+    return render_template('dashboard.html', active_page='dashboard', **obtener_contexto_financiero(session['user_id']))
 
 @app.route('/expenses')
 def pagina_gastos():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_contexto_financiero(session['user_id'])
-    # Obtenemos las categorías de la tabla correspondiente
-    categorias = supabase.table("categorias_gastos").select("*").execute().data
-    return render_template('expenses.html', active_page='expenses', categorias=categorias, **ctx)
+    cats = supabase.table("categorias_gastos").select("*").execute().data
+    return render_template('expenses.html', active_page='expenses', categorias=cats, **ctx)
 
 @app.route('/incomes')
 def pagina_ingresos():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_contexto_financiero(session['user_id'])
-    # Obtenemos las categorías de la tabla correspondiente
-    categorias = supabase.table("categorias_ingresos").select("*").execute().data
-    return render_template('incomes.html', active_page='incomes', categorias=categorias, **ctx)
-
-# --- ACCIONES ---
+    cats = supabase.table("categorias_ingresos").select("*").execute().data
+    return render_template('incomes.html', active_page='incomes', categorias=cats, **ctx)
 
 @app.route('/add_expense', methods=['POST'])
 def agregar_gasto():
     if 'user_id' not in session: return redirect(url_for('login'))
-    try:
-        supabase.table("gastos").insert({
-            "user_id": session['user_id'],
-            "descripcion": request.form.get('descripcion'),
-            "monto": float(request.form.get('monto', 0)),
-            "categoria_id": int(request.form.get('categoria_id'))
-        }).execute()
-    except Exception as e:
-        print(f"Error al añadir gasto: {e}")
+    supabase.table("gastos").insert({
+        "user_id": session['user_id'],
+        "descripcion": request.form.get('descripcion'),
+        "monto": float(request.form.get('monto')),
+        "categoria_id": int(request.form.get('categoria_id'))
+    }).execute()
     return redirect(url_for('pagina_gastos'))
 
 @app.route('/add_income', methods=['POST'])
 def agregar_ingreso():
     if 'user_id' not in session: return redirect(url_for('login'))
-    try:
-        supabase
+    supabase.table("ingresos").insert({
+        "user_id": session['user_id'],
+        "descripcion": request.form.get('descripcion'),
+        "monto": float(request.form.get('monto')),
+        "categoria_id": int(request.form.get('categoria_id'))
+    }).execute()
+    return redirect(url_for('pagina_ingresos'))
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
