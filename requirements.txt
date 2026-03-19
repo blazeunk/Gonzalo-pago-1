@@ -5,3 +5,5 @@ werkzeug
 gunicorn
 supabase
 postgrest
+pandas
+io
