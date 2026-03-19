@@ -136,7 +136,9 @@ def register():
 def dashboard():
     logger.info(f"✅ Acceso a dashboard - Usuario: {session.get('user_id')}")
     
-    # Datos de ejemplo para que el dashboard cargue siempre
+    # POR AHORA: Dashboard SIMPLE que siempre funciona
+    # Más adelante agregamos las consultas a Supabase
+    
     return render_template('dashboard.html',
                          weekly_exp=0,
                          weekly_income=0,
