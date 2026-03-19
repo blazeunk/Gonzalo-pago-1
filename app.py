@@ -5,7 +5,6 @@ from functools import wraps
 from datetime import timedelta
 from dotenv import load_dotenv
 import logging
-from werkzeug.security import generate_password_hash, check_password_hash
 
 # Cargar variables de entorno
 load_dotenv()
@@ -19,30 +18,21 @@ app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
 
 # Configuración de sesión
 app.config.update(
-    SESSION_COOKIE_SECURE=True,  # True en producción con HTTPS
+    SESSION_COOKIE_SECURE=False,  # Cambiar a True en producción con HTTPS
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_DOMAIN=None,
     PERMANENT_SESSION_LIFETIME=timedelta(days=7)
 )
 
-# ========== CONFIGURACIÓN SUPABASE ==========
+# Configuración Supabase
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
-SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_KEY')  # Para operaciones administrativas
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logger.error("Faltan variables de entorno de Supabase")
-    raise ValueError("SUPABASE_URL y SUPABASE_KEY son requeridas")
+    raise ValueError("Faltan variables de entorno de Supabase")
 
-# Cliente para operaciones normales (con RLS)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Cliente para operaciones administrativas (opcional, si necesitas saltarte RLS)
-if SUPABASE_SERVICE_KEY:
-    supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-else:
-    supabase_admin = supabase
 
 # ========== FUNCIONES DE AYUDA ==========
 def login_required(f):
@@ -54,16 +44,6 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def test_connection():
-    """Prueba la conexión a Supabase"""
-    try:
-        result = supabase.table('usuarios').select('count', count='exact').execute()
-        logger.info(f"✅ Conexión a Supabase exitosa")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Error conectando a Supabase: {e}")
-        return False
-
 # ========== RUTAS DE AUTENTICACIÓN ==========
 @app.route('/')
 def index():
@@ -71,82 +51,57 @@ def index():
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
-# ========== RUTAS DE DEPURACIÓN ==========
-@app.route('/debug/request', methods=['GET', 'POST'])
-def debug_request():
-    """Muestra todo lo que llega en la petición"""
-    debug_info = {
-        'method': request.method,
-        'headers': dict(request.headers),
-        'form': dict(request.form),
-        'args': dict(request.args),
-        'cookies': dict(request.cookies),
-        'session': dict(session),
-        'content_type': request.content_type,
-        'content_length': request.content_length
-    }
-    return jsonify(debug_info)
-
-@app.route('/debug/test-login', methods=['POST'])
-def test_login():
-    """Versión simplificada de login para probar"""
-    data = request.get_json() if request.is_json else request.form
-    return jsonify({
-        'received_data': dict(data),
-        'username': data.get('username'),
-        'password': data.get('password'),
-        'headers': dict(request.headers)
-    })
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # Versión ULTRA SIMPLIFICADA para diagnóstico
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
     
-    # GET - mostrar formulario
-    if request.method == 'GET':
-        return render_template('login.html')
-    
-    # POST - procesar login
     if request.method == 'POST':
-        # Imprimir TODO lo que llega
-        print("\n" + "="*50)
-        print("🔍 DEBUG - Datos recibidos en /login")
-        print(f"Headers: {dict(request.headers)}")
-        print(f"Form data: {dict(request.form)}")
-        print(f"Content Type: {request.content_type}")
-        print("="*50 + "\n")
-        
-        # Obtener datos del formulario
-        username = request.form.get('username', '').strip()
+        email = request.form.get('username', '').strip()  # Cambiado a email
         password = request.form.get('password', '').strip()
         
-        print(f"📝 Username extraído: '{username}'")
-        print(f"📝 Password extraído: '{password}'")
+        logger.info(f"Intento de login - Email: {email}")
         
-        # Verificar si llegaron datos
-        if not username:
-            print("❌ No se recibió username")
-            flash('No se recibió el nombre de usuario', 'danger')
+        if not email or not password:
+            flash('Email y contraseña son requeridos', 'danger')
             return render_template('login.html')
         
-        if not password:
-            print("❌ No se recibió password")
-            flash('No se recibió la contraseña', 'danger')
-            return render_template('login.html')
+        try:
+            # Usar Auth de Supabase
+            response = supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            
+            if response.user:
+                # Obtener metadata
+                user_metadata = response.user.user_metadata
+                username = user_metadata.get('username', email.split('@')[0])
+                
+                session.clear()
+                session['user_id'] = response.user.id
+                session['username'] = username
+                session['email'] = response.user.email
+                session.permanent = True
+                
+                logger.info(f"Login exitoso para: {email}")
+                flash(f'¡Bienvenido {username}!', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Email o contraseña incorrectos', 'danger')
+                
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error en login: {error_msg}")
+            
+            if "Invalid login credentials" in error_msg:
+                flash('Email o contraseña incorrectos', 'danger')
+            else:
+                flash(f'Error: {error_msg}', 'danger')
         
-        # Validar longitud mínima
-        if len(username) < 3:
-            print(f"❌ Usuario demasiado corto: {len(username)} caracteres")
-            flash(f'El usuario debe tener al menos 3 caracteres', 'danger')
-            return render_template('login.html')
-        
-        # Si llegamos aquí, los datos son válidos
-        print(f"✅ Datos válidos recibidos para usuario: {username}")
-        
-        # Aquí iría la verificación con Supabase
-        # Por ahora, simulamos un login exitoso para probar
-        flash(f'Login exitoso para {username}! (modo prueba)', 'success')
-        return redirect(url_for('dashboard'))
+        return render_template('login.html')
+    
+    return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -172,48 +127,33 @@ def register():
             return render_template('register.html')
         
         try:
-            # Verificar si usuario ya existe
-            existing = supabase.table('usuarios')\
-                .select('*')\
-                .eq('username', username)\
-                .execute()
+            # Registrar con Supabase Auth
+            response = supabase.auth.sign_up({
+                "email": email,
+                "password": password,
+                "options": {
+                    "data": {
+                        "username": username,
+                        "full_name": username
+                    }
+                }
+            })
             
-            if existing.data and len(existing.data) > 0:
-                flash('El nombre de usuario ya existe', 'danger')
-                return render_template('register.html')
-            
-            # Verificar si email ya existe
-            existing_email = supabase.table('usuarios')\
-                .select('*')\
-                .eq('email', email)\
-                .execute()
-            
-            if existing_email.data and len(existing_email.data) > 0:
-                flash('El email ya está registrado', 'danger')
-                return render_template('register.html')
-            
-            # Crear nuevo usuario
-            hashed_password = generate_password_hash(password)
-            
-            new_user = {
-                'username': username,
-                'email': email,
-                'password': hashed_password,
-                'fecha_registro': 'now()'
-            }
-            
-            result = supabase.table('usuarios').insert(new_user).execute()
-            
-            if result.data and len(result.data) > 0:
-                logger.info(f"Usuario registrado exitosamente: {username}")
-                flash('¡Registro exitoso! Ahora puedes iniciar sesión.', 'success')
+            if response.user:
+                logger.info(f"Usuario registrado exitosamente: {response.user.id}")
+                flash('¡Registro exitoso! Revisa tu email para confirmar la cuenta.', 'success')
                 return redirect(url_for('login'))
             else:
-                flash('Error al registrar usuario', 'danger')
+                flash('Error en el registro', 'danger')
                 
         except Exception as e:
-            logger.error(f"Error en registro: {e}")
-            flash(f'Error en el registro: {str(e)}', 'danger')
+            error_msg = str(e)
+            logger.error(f"Error en registro: {error_msg}")
+            
+            if "User already registered" in error_msg:
+                flash('Este email ya está registrado', 'danger')
+            else:
+                flash(f'Error en el registro: {error_msg}', 'danger')
         
         return render_template('register.html')
     
@@ -223,42 +163,33 @@ def register():
 @login_required
 def dashboard():
     try:
-        user_id = session['user_id']
+        # Obtener gastos (necesitas crear tabla 'gastos' en Supabase)
+        gastos = []
+        ingresos = []
+        total_gastos = 0
+        total_ingresos = 0
         
-        # Obtener gastos del usuario
-        gastos_result = supabase.table('gastos')\
-            .select('*')\
-            .eq('usuario_id', user_id)\
-            .order('fecha', desc=True)\
-            .limit(10)\
-            .execute()
+        # Intentar obtener gastos si existe la tabla
+        try:
+            gastos_result = supabase.table('gastos')\
+                .select('*')\
+                .eq('user_id', session['user_id'])\
+                .order('created_at', desc=True)\
+                .limit(10)\
+                .execute()
+            gastos = gastos_result.data if gastos_result.data else []
+            
+            # Calcular total
+            if gastos:
+                total_gastos = sum(g.get('amount', 0) for g in gastos)
+        except:
+            pass  # La tabla no existe aún
         
-        # Obtener ingresos del usuario
-        ingresos_result = supabase.table('ingresos')\
-            .select('*')\
-            .eq('usuario_id', user_id)\
-            .order('fecha', desc=True)\
-            .limit(10)\
-            .execute()
-        
-        # Calcular totales
-        gastos_total = supabase.table('gastos')\
-            .select('monto')\
-            .eq('usuario_id', user_id)\
-            .execute()
-        
-        ingresos_total = supabase.table('ingresos')\
-            .select('monto')\
-            .eq('usuario_id', user_id)\
-            .execute()
-        
-        total_gastos = sum(item['monto'] for item in gastos_total.data) if gastos_total.data else 0
-        total_ingresos = sum(item['monto'] for item in ingresos_total.data) if ingresos_total.data else 0
         balance = total_ingresos - total_gastos
         
         return render_template('dashboard.html',
-                             gastos=gastos_result.data if gastos_result.data else [],
-                             ingresos=ingresos_result.data if ingresos_result.data else [],
+                             gastos=gastos,
+                             ingresos=ingresos,
                              total_gastos=total_gastos,
                              total_ingresos=total_ingresos,
                              balance=balance)
@@ -269,169 +200,38 @@ def dashboard():
 
 @app.route('/logout')
 def logout():
+    supabase.auth.sign_out()
     session.clear()
     flash('Has cerrado sesión', 'info')
     return redirect(url_for('login'))
 
-# ========== RUTAS DE GASTOS ==========
-@app.route('/gastos')
-@login_required
-def ver_gastos():
-    try:
-        result = supabase.table('gastos')\
-            .select('*')\
-            .eq('usuario_id', session['user_id'])\
-            .order('fecha', desc=True)\
-            .execute()
-        
-        return render_template('gastos.html', gastos=result.data if result.data else [])
-    except Exception as e:
-        logger.error(f"Error al cargar gastos: {e}")
-        flash('Error al cargar los gastos', 'danger')
-        return redirect(url_for('dashboard'))
+# ========== RUTAS DE DEPURACIÓN ==========
+@app.route('/debug/session')
+def debug_session():
+    """Ver estado de la sesión"""
+    return jsonify({
+        'session': dict(session),
+        'user_id': session.get('user_id'),
+        'username': session.get('username')
+    })
 
-@app.route('/gastos/agregar', methods=['POST'])
-@login_required
-def agregar_gasto():
-    descripcion = request.form.get('descripcion', '').strip()
-    monto = request.form.get('monto', '').strip()
-    categoria = request.form.get('categoria', 'Otros')
-    
-    if not descripcion or not monto:
-        flash('Descripción y monto son requeridos', 'danger')
-        return redirect(url_for('ver_gastos'))
-    
+@app.route('/debug/auth')
+def debug_auth():
+    """Verificar autenticación con Supabase"""
     try:
-        monto_float = float(monto)
-        
-        nuevo_gasto = {
-            'usuario_id': session['user_id'],
-            'descripcion': descripcion,
-            'monto': monto_float,
-            'categoria': categoria
-        }
-        
-        result = supabase.table('gastos').insert(nuevo_gasto).execute()
-        
-        if result.data:
-            flash('Gasto agregado correctamente', 'success')
-        else:
-            flash('Error al agregar gasto', 'danger')
-            
-    except ValueError:
-        flash('Monto inválido', 'danger')
+        # Intentar obtener la sesión actual de Supabase
+        user = supabase.auth.get_user()
+        return jsonify({
+            'status': 'ok',
+            'user': user.user.email if user.user else None,
+            'session_exists': user.user is not None
+        })
     except Exception as e:
-        logger.error(f"Error al agregar gasto: {e}")
-        flash('Error al agregar gasto', 'danger')
-    
-    return redirect(url_for('ver_gastos'))
-
-@app.route('/gastos/eliminar/<int:gasto_id>')
-@login_required
-def eliminar_gasto(gasto_id):
-    try:
-        result = supabase.table('gastos')\
-            .delete()\
-            .eq('id', gasto_id)\
-            .eq('usuario_id', session['user_id'])\
-            .execute()
-        
-        if result.data:
-            flash('Gasto eliminado', 'info')
-        else:
-            flash('No se pudo eliminar el gasto', 'danger')
-    except Exception as e:
-        logger.error(f"Error al eliminar gasto: {e}")
-        flash('Error al eliminar gasto', 'danger')
-    
-    return redirect(url_for('ver_gastos'))
-
-# ========== RUTAS DE INGRESOS ==========
-@app.route('/ingresos')
-@login_required
-def ver_ingresos():
-    try:
-        result = supabase.table('ingresos')\
-            .select('*')\
-            .eq('usuario_id', session['user_id'])\
-            .order('fecha', desc=True)\
-            .execute()
-        
-        return render_template('ingresos.html', ingresos=result.data if result.data else [])
-    except Exception as e:
-        logger.error(f"Error al cargar ingresos: {e}")
-        flash('Error al cargar los ingresos', 'danger')
-        return redirect(url_for('dashboard'))
-
-@app.route('/ingresos/agregar', methods=['POST'])
-@login_required
-def agregar_ingreso():
-    descripcion = request.form.get('descripcion', '').strip()
-    monto = request.form.get('monto', '').strip()
-    categoria = request.form.get('categoria', 'Salario')
-    
-    if not descripcion or not monto:
-        flash('Descripción y monto son requeridos', 'danger')
-        return redirect(url_for('ver_ingresos'))
-    
-    try:
-        monto_float = float(monto)
-        
-        nuevo_ingreso = {
-            'usuario_id': session['user_id'],
-            'descripcion': descripcion,
-            'monto': monto_float,
-            'categoria': categoria
-        }
-        
-        result = supabase.table('ingresos').insert(nuevo_ingreso).execute()
-        
-        if result.data:
-            flash('Ingreso agregado correctamente', 'success')
-        else:
-            flash('Error al agregar ingreso', 'danger')
-            
-    except ValueError:
-        flash('Monto inválido', 'danger')
-    except Exception as e:
-        logger.error(f"Error al agregar ingreso: {e}")
-        flash('Error al agregar ingreso', 'danger')
-    
-    return redirect(url_for('ver_ingresos'))
-
-@app.route('/ingresos/eliminar/<int:ingreso_id>')
-@login_required
-def eliminar_ingreso(ingreso_id):
-    try:
-        result = supabase.table('ingresos')\
-            .delete()\
-            .eq('id', ingreso_id)\
-            .eq('usuario_id', session['user_id'])\
-            .execute()
-        
-        if result.data:
-            flash('Ingreso eliminado', 'info')
-        else:
-            flash('No se pudo eliminar el ingreso', 'danger')
-    except Exception as e:
-        logger.error(f"Error al eliminar ingreso: {e}")
-        flash('Error al eliminar ingreso', 'danger')
-    
-    return redirect(url_for('ver_ingresos'))
-
-# ========== RUTA DE DEPURACIÓN ==========
-@app.route('/debug/connection')
-def debug_connection():
-    """Ruta para verificar conexión a Supabase"""
-    if test_connection():
-        return jsonify({"status": "ok", "message": "Conectado a Supabase"})
-    else:
-        return jsonify({"status": "error", "message": "Error de conexión"}), 500
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
-    # Probar conexión al iniciar
-    if test_connection():
-        port = int(os.getenv('PORT', 5000))
-        app.run(host='0.0.0.0', port=port, debug=True)
-    else:
-        logger.error("No se pudo conectar a Supabase. Verifica tus credenciales.")
+    port = int(os.getenv('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
