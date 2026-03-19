@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Gastos{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2><i class="bi bi-receipt text-danger me-2"></i>Gastos</h2>
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>
+        Módulo de gastos en desarrollo. Pronto podrás agregar tus gastos.
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+        <i class="bi bi-arrow-left"></i> Volver al Dashboard
+    </a>
+</div>
+{% endblock %}
