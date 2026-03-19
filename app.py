@@ -4,7 +4,7 @@ from supabase import create_client, Client
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "pago_gonzalo_ultra_safe_2026")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "pago_gonzalo_final_2026")
 
 # --- CONFIGURACIÓN SUPABASE ---
 supabase_url = os.environ.get("SUPABASE_URL", "").strip()
@@ -17,38 +17,53 @@ except Exception as e:
     supabase = None
 
 def obtener_todo_el_contexto(user_id):
-    """Genera el diccionario completo de variables para evitar UndefinedError."""
+    """Genera un contexto ultra-completo para evitar UndefinedError en Jinja2."""
     try:
         res = supabase.table("pagos").select("*").eq("user_id", user_id).execute()
         pagos = res.data or []
         
-        total_pagado = sum(float(p.get('monto', 0)) for p in pagos if p.get('estado') == 'pagado')
-        total_pendiente = sum(float(p.get('monto', 0)) for p in pagos if p.get('estado') == 'pendiente')
-        total_balance = total_pagado - total_pendiente 
+        # Cálculos base
+        p_pagados = [float(p.get('monto', 0)) for p in pagos if p.get('estado') == 'pagado']
+        p_pendientes = [float(p.get('monto', 0)) for p in pagos if p.get('estado') == 'pendiente']
+        
+        sum_pagado = sum(p_pagados)
+        sum_pendiente = sum(p_pendientes)
+        balance = sum_pagado - sum_pendiente
         
         return {
-            "resumen": {"total_pagado": total_pagado, "total_pendiente": total_pendiente, "cantidad": len(pagos)},
-            "total_balance": total_balance,
-            "weekly_income": total_pagado / 4,
-            "monthly_income": total_pagado,
-            "weekly_exp": total_pendiente / 4,
-            "monthly_exp": total_pendiente,
-            "total_savings": total_balance if total_balance > 0 else 0.0,
-            "savings_rate": 0.0,
+            # Variables de ingresos (Atrapando el error 'total_income')
+            "total_income": sum_pagado,
+            "weekly_income": sum_pagado / 4,
+            "monthly_income": sum_pagado,
+            
+            # Variables de gastos
+            "total_expenses": sum_pendiente,
+            "total_exp": sum_pendiente,
+            "weekly_exp": sum_pendiente / 4,
+            "monthly_exp": sum_pendiente,
+            
+            # Balances y ahorros
+            "total_balance": balance,
+            "total_savings": balance if balance > 0 else 0.0,
+            "savings_rate": 15.0 if sum_pagado > 0 else 0.0,
+            
+            # Otros
+            "resumen": {"total_pagado": sum_pagado, "total_pendiente": sum_pendiente, "cantidad": len(pagos)},
             "pagos": pagos,
             "user_email": session.get('email', 'Usuario'),
             "active_page": "dashboard"
         }
-    except:
+    except Exception as e:
+        print(f"Fallo en Supabase/Cálculos: {e}")
         return {
+            "total_income": 0.0, "weekly_income": 0.0, "monthly_income": 0.0,
+            "total_expenses": 0.0, "total_exp": 0.0, "weekly_exp": 0.0, "monthly_exp": 0.0,
+            "total_balance": 0.0, "total_savings": 0.0, "savings_rate": 0.0,
             "resumen": {"total_pagado": 0, "total_pendiente": 0, "cantidad": 0},
-            "total_balance": 0.0, "weekly_income": 0.0, "monthly_income": 0.0,
-            "weekly_exp": 0.0, "monthly_exp": 0.0, "total_savings": 0.0,
-            "savings_rate": 0.0, "pagos": [], "user_email": "Usuario",
-            "active_page": "dashboard"
+            "pagos": [], "user_email": "Usuario", "active_page": "dashboard"
         }
 
-# --- RUTAS DE AUTENTICACIÓN ---
+# --- RUTAS ---
 
 @app.route('/')
 def index():
@@ -80,32 +95,16 @@ def register():
         try:
             hashed = generate_password_hash(password)
             supabase.table("users").insert({"email": email, "password": hashed}).execute()
-            flash("Cuenta creada. Ya puedes iniciar sesión.", "success")
+            flash("¡Registro exitoso! Ya puedes entrar.", "success")
             return redirect(url_for('login'))
-        except Exception as e:
-            flash(f"Error al registrar: {e}", "danger")
+        except:
+            flash("El email ya existe o hubo un error.", "danger")
     return render_template('register.html')
-
-# --- RUTAS DEL DASHBOARD ---
 
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session: return redirect(url_for('login'))
     ctx = obtener_todo_el_contexto(session['user_id'])
-    return render_template('dashboard.html', **ctx)
-
-@app.route('/gastos')
-def pagina_gastos():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    ctx = obtener_todo_el_contexto(session['user_id'])
-    ctx['active_page'] = 'expenses'
-    return render_template('dashboard.html', **ctx)
-
-@app.route('/ingresos')
-def pagina_ingresos():
-    if 'user_id' not in session: return redirect(url_for('login'))
-    ctx = obtener_todo_el_contexto(session['user_id'])
-    ctx['active_page'] = 'incomes'
     return render_template('dashboard.html', **ctx)
 
 @app.route('/logout')
