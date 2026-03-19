@@ -41,6 +41,19 @@ def login():
 def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
+    
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        try:
+            # Registro en Supabase Auth
+            res = supabase.auth.sign_up({"email": email, "password": password})
+            return redirect(url_for('login'))
+        except Exception as e:
+            return render_template('register.html', error="Error al registrar usuario")
+    return render_template('register.html')
 
 # --- DASHBOARD Y GRÁFICOS ---
 
