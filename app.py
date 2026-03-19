@@ -135,6 +135,20 @@ def eliminar_gasto(id):
 
 # --- GESTIÓN DE INGRESOS ---
 
+@app.route('/incomes')
+def pagina_ingresos():
+    if 'user_id' not in session: 
+        return redirect(url_for('login'))
+    
+    user_id = session['user_id']
+    
+    # Obtener lista de ingresos y categorías
+    ingresos = supabase.table("ingresos").select("*, categorias_ingresos(nombre)").eq("usuario_id", user_id).order("id").execute().data
+    categorias = supabase.table("categorias_ingresos").select("*").execute().data
+    
+    return render_template('incomes.html', ingresos_lista=ingresos, categorias=categorias)
+
+# Aquí ya siguen tus otras funciones: @app.route('/add_income')...
 @app.route('/add_income', methods=['POST'])
 def agregar_income():
     if 'user_id' not in session: return redirect(url_for('login'))
