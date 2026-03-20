@@ -133,13 +133,29 @@ def expenses():
 @app.route('/add_expense', methods=['POST'])
 @login_required
 def add_expense():
-    supabase.table('gastos').insert({
-        "user_id": session['user_id'],
-        "fecha": request.form['fecha'],
-        "monto": request.form['monto'],
-        "categoria": request.form['categoria'],
-        "descripcion": request.form['descripcion']
-    }).execute()
+    try:
+        fecha = request.form.get('fecha')
+        monto = float(request.form.get('monto') or 0)
+        categoria = request.form.get('categoria')
+        descripcion = request.form.get('descripcion', '')
+
+        if not fecha or monto <= 0 or not categoria:
+            flash('Datos inválidos', 'danger')
+            return redirect(url_for('expenses'))
+
+        supabase.table('gastos').insert({
+            "user_id": session['user_id'],
+            "fecha": fecha,
+            "monto": monto,
+            "categoria": categoria,
+            "descripcion": descripcion
+        }).execute()
+
+        flash('Gasto agregado', 'success')
+
+    except Exception as e:
+        flash('Error al agregar gasto', 'danger')
+
     return redirect(url_for('expenses'))
 
 @app.route('/edit_expense/<id>', methods=['POST'])
