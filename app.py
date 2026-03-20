@@ -2,15 +2,18 @@
 Gonzalo Pago - Versión FINAL para Render + Supabase
 Última actualización: marzo 2026
 """
-
+import logging
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from supabase import create_client, Client
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'clave-secreta-temporal')
@@ -170,21 +173,21 @@ def dashboard():
                              today=get_today())
     
     except Exception as e:
-        logger.error(f"Error en dashboard: {e}")
+        print(f"Error en dashboard: {e}")  # Para ver en logs de Render
         flash('Error al cargar el dashboard', 'danger')
         return render_template('dashboard.html',
-                             weekly_exp=0,
-                             weekly_income=0,
-                             monthly_exp=0,
-                             monthly_income=0,
-                             total_exp=0,
-                             total_income=0,
-                             total_balance=0,
-                             gastos_data=[],
-                             gastos_labels=[],
-                             ingresos_data=[],
-                             ingresos_labels=[],
-                             today=get_today())
+                               weekly_exp=0,
+                               weekly_income=0,
+                               monthly_exp=0,
+                               monthly_income=0,
+                               total_exp=0,
+                               total_income=0,
+                               total_balance=0,
+                               gastos_data=[],
+                               gastos_labels=[],
+                               ingresos_data=[],
+                               ingresos_labels=[],
+                               today=datetime.now().strftime('%Y-%m-%d'))
 # ================================================================
 # RUTAS BÁSICAS (puedes expandir después)
 # ================================================================
