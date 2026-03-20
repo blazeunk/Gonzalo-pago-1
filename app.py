@@ -127,20 +127,33 @@ def dashboard():
                                total_balance=total_ingresos - total_gastos,
                                today=hoy.strftime('%Y-%m-%d'),
                                active_page='dashboard')
-
+        gastos_por_cat = {}
+            for g in gastos:
+                cat = g.get('categoria', 'Otros')
+                gastos_por_cat[cat] = gastos_por_cat.get(cat, 0) + float(g.get('monto', 0))
+            
+            ingresos_por_cat = {}
+            for i in ingresos:
+                cat = i.get('categoria', 'Otros')
+                ingresos_por_cat[cat] = ingresos_por_cat.get(cat, 0) + float(i.get('monto', 0))
+    
     except Exception as e:
         logger.error(e)
         return render_template('dashboard.html',
-                               weekly_exp=0,
-                               weekly_income=0,
-                               monthly_exp=0,
-                               monthly_income=0,
-                               total_exp=0,
-                               total_income=0,
-                               total_balance=0,
-                               today=datetime.now().strftime('%Y-%m-%d'),
-                               active_page='dashboard')
-
+                                weekly_exp=0,
+                                weekly_income=0,
+                                monthly_exp=0,
+                                monthly_income=0,
+                                total_exp=0,
+                                total_income=0,
+                                total_balance=0,
+                                today=datetime.now().strftime('%Y-%m-%d'),
+                                active_page='dashboard'
+                                gastos_labels=list(gastos_por_cat.keys()),
+                                gastos_data=list(gastos_por_cat.values()),
+                                ingresos_labels=list(ingresos_por_cat.keys()),
+                                ingresos_data=list(ingresos_por_cat.values()), 
+)
 # ================================================================
 # GASTOS
 # ================================================================
