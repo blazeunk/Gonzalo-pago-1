@@ -1,87 +1,30 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
-
 {% block content %}
+
+<div class="container mt-4">
+
+<h2>Dashboard</h2>
+
+<h4>Total: ${{ total_balance }}</h4>
+
 <canvas id="gastosChart"></canvas>
 
-<div class="container py-5">
-    <h1 class="text-center mb-5">Dashboard</h1>
-    
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <div class="row g-4">
-        <div class="col-md-4">
-            <div class="card text-center shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title text-success">Ingresos (7 días)</h5>
-                    <h3 class="fw-bold text-success">${{ "%.2f"|format(weekly_income) }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card text-center shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title text-danger">Gastos (7 días)</h5>
-                    <h3 class="fw-bold text-danger">${{ "%.2f"|format(weekly_exp) }}</h3>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card text-center shadow-sm border-primary">
-                <div class="card-body">
-                    <h5 class="card-title text-primary">Balance Total</h5>
-                    <h3 class="fw-bold {% if total_balance >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        ${{ "%.2f"|format(total_balance) }}
-                    </h3>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="text-center mt-5">
-        <a href="{{ url_for('expenses') }}" class="btn btn-danger btn-lg me-3">
-            <i class="bi bi-receipt me-2"></i>Ver Gastos
-        </a>
-        <a href="{{ url_for('incomes') }}" class="btn btn-success btn-lg">
-            <i class="bi bi-cash-stack me-2"></i>Ver Ingresos
-        </a>
-    </div>
 </div>
-<canvas id="gastosChart"></canvas>
 
-<script>
-const gastosChart = new Chart(document.getElementById('gastosChart'), {
-    type: 'pie',
-    data: {
-        labels: {{ gastos_labels|tojson }},
-        datasets: [{
-            data: {{ gastos_data|tojson }},
-        }]
-    }
-});
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-const gastos = {{ gastos_data|tojson }};
-const labels = {{ gastos_labels|tojson }};
+const ctx = document.getElementById('gastosChart');
 
-new Chart(document.getElementById('gastosChart'), {
+new Chart(ctx, {
     type: 'pie',
     data: {
-        labels: labels,
+        labels: {{ gastos_labels | tojson }},
         datasets: [{
-            data: gastos
+            data: {{ gastos_data | tojson }}
         }]
     }
 });
 </script>
+
 {% endblock %}
