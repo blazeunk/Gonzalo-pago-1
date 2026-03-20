@@ -54,4 +54,31 @@
         </a>
     </div>
 </div>
+<canvas id="gastosChart"></canvas>
+
+<script>
+const gastosChart = new Chart(document.getElementById('gastosChart'), {
+    type: 'pie',
+    data: {
+        labels: {{ gastos_labels|tojson }},
+        datasets: [{
+            data: {{ gastos_data|tojson }},
+        }]
+    }
+});
+</script>
+<canvas id="ingresosChart"></canvas>
+
+<script>
+const ingresosChart = new Chart(document.getElementById('ingresosChart'), {
+    type: 'bar',
+    data: {
+        labels: {{ ingresos_labels|tojson }},
+        datasets: [{
+            data: {{ ingresos_data|tojson }},
+        }]
+    }
+});
+</script>
+
 {% endblock %}
