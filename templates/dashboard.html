@@ -66,19 +66,19 @@ const gastosChart = new Chart(document.getElementById('gastosChart'), {
         }]
     }
 });
-</script>
-<canvas id="ingresosChart"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<canvas id="gastosChart"></canvas>
 
 <script>
-const ingresosChart = new Chart(document.getElementById('ingresosChart'), {
-    type: 'bar',
+new Chart(document.getElementById('gastosChart'), {
+    type: 'pie',
     data: {
-        labels: {{ ingresos_labels|tojson }},
+        labels: {{ gastos_labels|tojson }},
         datasets: [{
-            data: {{ ingresos_data|tojson }},
+            data: {{ gastos_data|tojson }}
         }]
     }
 });
 </script>
-
 {% endblock %}
