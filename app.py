@@ -104,19 +104,37 @@ def dashboard():
         gastos = supabase.table('gastos').select('*').eq('user_id', user_id).execute().data or []
         ingresos = supabase.table('ingresos').select('*').eq('user_id', user_id).execute().data or []
 
+        hoy = datetime.now()
+        hace_7_dias = (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
+        inicio_mes = hoy.replace(day=1).strftime('%Y-%m-%d')
+
         total_gastos = sum(float(g.get('monto', 0)) for g in gastos)
         total_ingresos = sum(float(i.get('monto', 0)) for i in ingresos)
 
+        weekly_exp = sum(float(g.get('monto', 0)) for g in gastos if g.get('fecha', '') >= hace_7_dias)
+        weekly_income = sum(float(i.get('monto', 0)) for i in ingresos if i.get('fecha', '') >= hace_7_dias)
+
+        monthly_exp = sum(float(g.get('monto', 0)) for g in gastos if g.get('fecha', '') >= inicio_mes)
+        monthly_income = sum(float(i.get('monto', 0)) for i in ingresos if i.get('fecha', '') >= inicio_mes)
+
         return render_template('dashboard.html',
+                               weekly_exp=weekly_exp,
+                               weekly_income=weekly_income,
+                               monthly_exp=monthly_exp,
+                               monthly_income=monthly_income,
                                total_exp=total_gastos,
                                total_income=total_ingresos,
                                total_balance=total_ingresos - total_gastos,
-                               today=datetime.now().strftime('%Y-%m-%d'),
+                               today=hoy.strftime('%Y-%m-%d'),
                                active_page='dashboard')
 
     except Exception as e:
         logger.error(e)
         return render_template('dashboard.html',
+                               weekly_exp=0,
+                               weekly_income=0,
+                               monthly_exp=0,
+                               monthly_income=0,
                                total_exp=0,
                                total_income=0,
                                total_balance=0,
