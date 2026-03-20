@@ -128,7 +128,7 @@ def expenses():
         categorias = supabase.table('categorias_gastos').select('nombre').execute().data or []
 
         return render_template('expenses.html',
-                               expenses=gastos,
+                               gastos=gastos,
                                categorias=categorias,
                                today=datetime.now().strftime('%Y-%m-%d'),
                                active_page='expenses')
@@ -161,6 +161,11 @@ def agregar_gasto():
 
     return redirect(url_for('expenses'))
 
+    @app.route('/ver_gastos')
+    @login_required
+    def ver_gastos():
+        return redirect(url_for('expenses'))
+
 
 # ================================================================
 # INCOMES
@@ -176,7 +181,7 @@ def incomes():
         categorias = supabase.table('categorias_ingresos').select('nombre').execute().data or []
 
         return render_template('incomes.html',
-                               incomes=ingresos,
+                               ingresos=ingresos,
                                categorias=categorias,
                                today=datetime.now().strftime('%Y-%m-%d'),
                                active_page='incomes')
@@ -209,6 +214,10 @@ def agregar_ingreso():
 
     return redirect(url_for('incomes'))
 
+        @app.route('/ver_ingresos')
+    @login_required
+    def ver_ingresos():
+        return redirect(url_for('incomes'))
 
 # ================================================================
 # RUN
