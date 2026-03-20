@@ -103,13 +103,88 @@ def logout():
 # ================================================================
 # DASHBOARD (versión mínima para que Render arranque)
 # ================================================================
-
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    return render_template('dashboard.html', active_page='dashboard')
-
-
+    try:
+        user_id = session['user_id']
+        hoy = datetime.now()
+        hace_7_dias = (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
+        inicio_mes = hoy.replace(day=1).strftime('%Y-%m-%d')
+        
+        # Obtener gastos e ingresos desde Supabase
+        gastos_result = supabase.table('gastos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        ingresos_result = supabase.table('ingresos')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .order('fecha', desc=True)\
+            .execute()
+        
+        gastos = gastos_result.data or []
+        ingresos = ingresos_result.data or []
+        
+        # Calcular totales
+        total_gastos = sum(float(g.get('monto', 0)) for g in gastos)
+        total_ingresos = sum(float(i.get('monto', 0)) for i in ingresos)
+        
+        # Semanales
+        gastos_semana = sum(float(g.get('monto', 0)) for g in gastos 
+                           if g.get('fecha', '') >= hace_7_dias)
+        ingresos_semana = sum(float(i.get('monto', 0)) for i in ingresos 
+                            if i.get('fecha', '') >= hace_7_dias)
+        
+        # Mensuales
+        gastos_mes = sum(float(g.get('monto', 0)) for g in gastos 
+                        if g.get('fecha', '') >= inicio_mes)
+        ingresos_mes = sum(float(i.get('monto', 0)) for i in ingresos 
+                         if i.get('fecha', '') >= inicio_mes)
+        
+        # Datos para gráficos
+        gastos_por_categoria = {}
+        for g in gastos:
+            cat = g.get('categoria', 'Otros')
+            gastos_por_categoria[cat] = gastos_por_categoria.get(cat, 0) + float(g.get('monto', 0))
+        
+        ingresos_por_categoria = {}
+        for i in ingresos:
+            cat = i.get('categoria', 'Otros')
+            ingresos_por_categoria[cat] = ingresos_por_categoria.get(cat, 0) + float(i.get('monto', 0))
+        
+        return render_template('dashboard.html',
+                             weekly_exp=gastos_semana,
+                             weekly_income=ingresos_semana,
+                             monthly_exp=gastos_mes,
+                             monthly_income=ingresos_mes,
+                             total_exp=total_gastos,
+                             total_income=total_ingresos,
+                             total_balance=total_ingresos - total_gastos,
+                             gastos_data=list(gastos_por_categoria.values()),
+                             gastos_labels=list(gastos_por_categoria.keys()),
+                             ingresos_data=list(ingresos_por_categoria.values()),
+                             ingresos_labels=list(ingresos_por_categoria.keys()),
+                             today=get_today())
+    
+    except Exception as e:
+        logger.error(f"Error en dashboard: {e}")
+        flash('Error al cargar el dashboard', 'danger')
+        return render_template('dashboard.html',
+                             weekly_exp=0,
+                             weekly_income=0,
+                             monthly_exp=0,
+                             monthly_income=0,
+                             total_exp=0,
+                             total_income=0,
+                             total_balance=0,
+                             gastos_data=[],
+                             gastos_labels=[],
+                             ingresos_data=[],
+                             ingresos_labels=[],
+                             today=get_today())
 # ================================================================
 # RUTAS BÁSICAS (puedes expandir después)
 # ================================================================
