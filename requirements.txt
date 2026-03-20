@@ -1,9 +1,5 @@
-Flask
-psycopg2-binary
-python-dotenv
-werkzeug
-gunicorn
-supabase
-postgrest
-pandas
-openpyxl
+Flask==3.0.3
+gunicorn==23.0.0
+supabase==2.0.0
+python-dotenv==1.0.1
+werkzeug==3.0.3
