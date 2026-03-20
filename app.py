@@ -5,34 +5,36 @@ from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from supabase import create_client, Client
 
+# ================================================================
+# CONFIG
+# ================================================================
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'clave-secreta-temporal-para-pruebas')
+app.secret_key = os.getenv('SECRET_KEY', 'clave-secreta-temporal')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Faltan SUPABASE_URL o SUPABASE_KEY")
+    raise ValueError("Faltan variables de entorno de Supabase")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-
 # ================================================================
-# Decorador
+# DECORADOR LOGIN
 # ================================================================
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            flash('Por favor inicia sesión', 'warning')
+            flash('Inicia sesión primero', 'warning')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
-
 
 # ================================================================
 # AUTH
@@ -41,17 +43,19 @@ def login_required(f):
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '').strip()
-
         try:
-            response = supabase.auth.sign_up({
+            email = request.form.get('email')
+            password = request.form.get('password')
+
+            res = supabase.auth.sign_up({
                 "email": email,
                 "password": password
             })
-            if response.user:
+
+            if res.user:
                 flash('Registro exitoso', 'success')
                 return redirect(url_for('login'))
+
         except Exception as e:
             logger.error(e)
             flash(str(e), 'danger')
@@ -63,14 +67,15 @@ def register():
 def login():
     if request.method == 'POST':
         try:
-            response = supabase.auth.sign_in_with_password({
+            res = supabase.auth.sign_in_with_password({
                 "email": request.form.get('email'),
                 "password": request.form.get('password')
             })
 
-            if response.user:
-                session['user_id'] = str(response.user.id)  # 🔥 UUID FIX
-                session['email'] = response.user.email
+            if res.user:
+                session['user_id'] = str(res.user.id)  # 🔥 UUID FIX
+                session['email'] = res.user.email
+                flash('Bienvenido', 'success')
                 return redirect(url_for('dashboard'))
 
         except Exception as e:
@@ -83,8 +88,8 @@ def login():
 @app.route('/logout')
 def logout():
     session.clear()
+    flash('Sesión cerrada', 'info')
     return redirect(url_for('login'))
-
 
 # ================================================================
 # DASHBOARD
@@ -111,11 +116,15 @@ def dashboard():
 
     except Exception as e:
         logger.error(e)
-        return render_template('dashboard.html', total_exp=0, total_income=0, total_balance=0)
-
+        return render_template('dashboard.html',
+                               total_exp=0,
+                               total_income=0,
+                               total_balance=0,
+                               today=datetime.now().strftime('%Y-%m-%d'),
+                               active_page='dashboard')
 
 # ================================================================
-# EXPENSES
+# GASTOS
 # ================================================================
 
 @app.route('/expenses')
@@ -128,17 +137,20 @@ def expenses():
         categorias = supabase.table('categorias_gastos').select('nombre').execute().data or []
 
         return render_template('expenses.html',
-                               gastos=gastos,
+                               gastos=gastos,  # 🔥 nombre corregido
                                categorias=categorias,
                                today=datetime.now().strftime('%Y-%m-%d'),
                                active_page='expenses')
 
     except Exception as e:
         logger.error(e)
-        return render_template('expenses.html', expenses=[], categorias=[])
+        return render_template('expenses.html',
+                               gastos=[],
+                               categorias=[],
+                               today=datetime.now().strftime('%Y-%m-%d'),
+                               active_page='expenses')
 
 
-# 🔥 endpoint corregido
 @app.route('/agregar_gasto', methods=['POST'])
 @login_required
 def agregar_gasto():
@@ -161,14 +173,8 @@ def agregar_gasto():
 
     return redirect(url_for('expenses'))
 
-    @app.route('/ver_gastos')
-    @login_required
-    def ver_gastos():
-        return redirect(url_for('expenses'))
-
-
 # ================================================================
-# INCOMES
+# INGRESOS
 # ================================================================
 
 @app.route('/incomes')
@@ -181,17 +187,20 @@ def incomes():
         categorias = supabase.table('categorias_ingresos').select('nombre').execute().data or []
 
         return render_template('incomes.html',
-                               ingresos=ingresos,
+                               ingresos=ingresos,  # 🔥 nombre corregido
                                categorias=categorias,
                                today=datetime.now().strftime('%Y-%m-%d'),
                                active_page='incomes')
 
     except Exception as e:
         logger.error(e)
-        return render_template('incomes.html', incomes=[], categorias=[])
+        return render_template('incomes.html',
+                               ingresos=[],
+                               categorias=[],
+                               today=datetime.now().strftime('%Y-%m-%d'),
+                               active_page='incomes')
 
 
-# 🔥 endpoint corregido
 @app.route('/agregar_ingreso', methods=['POST'])
 @login_required
 def agregar_ingreso():
@@ -214,10 +223,20 @@ def agregar_ingreso():
 
     return redirect(url_for('incomes'))
 
-        @app.route('/ver_ingresos')
-    @login_required
-    def ver_ingresos():
-        return redirect(url_for('incomes'))
+# ================================================================
+# RUTAS AUX (IMPORTANTE PARA TUS HTML)
+# ================================================================
+
+@app.route('/ver_gastos')
+@login_required
+def ver_gastos():
+    return redirect(url_for('expenses'))
+
+
+@app.route('/ver_ingresos')
+@login_required
+def ver_ingresos():
+    return redirect(url_for('incomes'))
 
 # ================================================================
 # RUN
