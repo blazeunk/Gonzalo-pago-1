@@ -4,6 +4,9 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from supabase import create_client, Client
+import pandas as pd
+from flask import send_file
+import io
 
 # ================================================================
 # CONFIG
@@ -154,6 +157,22 @@ def dashboard():
                                 ingresos_labels=list(ingresos_por_cat.keys()),
                                 ingresos_data=list(ingresos_por_cat.values()), 
 )
+@app.route('/exportar_gastos')
+@login_required
+def exportar_gastos():
+    user_id = str(session['user_id'])
+
+    gastos = supabase.table('gastos').select('*').eq('user_id', user_id).execute().data or []
+
+    df = pd.DataFrame(gastos)
+
+    output = io.BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    return send_file(output,
+                     download_name="gastos.xlsx",
+                     as_attachment=True)
 # ================================================================
 # GASTOS
 # ================================================================
@@ -203,6 +222,35 @@ def agregar_gasto():
         flash('Error al agregar gasto', 'danger')
 
     return redirect(url_for('expenses'))
+    @app.route('/editar_gasto/<int:id>', methods=['POST'])
+    @login_required
+    def editar_gasto(id):
+        try:
+            supabase.table('gastos').update({
+                'fecha': request.form.get('fecha'),
+                'monto': float(request.form.get('monto')),
+                'categoria': request.form.get('categoria'),
+                'descripcion': request.form.get('descripcion')
+            }).eq('id', id).execute()
+    
+            flash('Gasto actualizado', 'success')
+    
+        except Exception as e:
+            logger.error(e)
+            flash('Error al editar', 'danger')
+    
+        return redirect(url_for('expenses'))
+        @app.route('/eliminar_gasto/<int:id>')
+        @login_required
+        def eliminar_gasto(id):
+            try:
+                supabase.table('gastos').delete().eq('id', id).execute()
+                flash('Gasto eliminado', 'success')
+            except Exception as e:
+                logger.error(e)
+                flash('Error al eliminar', 'danger')
+        
+            return redirect(url_for('expenses'))
 
 # ================================================================
 # INGRESOS
