@@ -1,326 +1,224 @@
 import os
 import logging
 from datetime import datetime, timedelta
-from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
 from supabase import create_client, Client
 import pandas as pd
-from flask import send_file
-import io
+from io import BytesIO
 
-# ================================================================
+# ======================================================
 # CONFIG
-# ================================================================
+# ======================================================
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'clave-secreta-temporal')
+app.secret_key = os.getenv('SECRET_KEY', 'clave-secreta')
 
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Faltan variables de entorno de Supabase")
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ================================================================
-# DECORADOR LOGIN
-# ================================================================
+# ======================================================
+# LOGIN REQUIRED
+# ======================================================
 
 def login_required(f):
-    @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            flash('Inicia sesión primero', 'warning')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
+    decorated_function.__name__ = f.__name__
     return decorated_function
 
-# ================================================================
+# ======================================================
 # AUTH
-# ================================================================
+# ======================================================
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        try:
-            email = request.form.get('email')
-            password = request.form.get('password')
+@app.route('/')
+def home():
+    return redirect(url_for('login'))
 
-            res = supabase.auth.sign_up({
-                "email": email,
-                "password": password
-            })
-
-            if res.user:
-                flash('Registro exitoso', 'success')
-                return redirect(url_for('login'))
-
-        except Exception as e:
-            logger.error(e)
-            flash(str(e), 'danger')
-
-    return render_template('register.html')
-
-
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
         try:
             res = supabase.auth.sign_in_with_password({
-                "email": request.form.get('email'),
-                "password": request.form.get('password')
+                "email": request.form['email'],
+                "password": request.form['password']
             })
-
-            if res.user:
-                session['user_id'] = str(res.user.id)  # 🔥 UUID FIX
-                session['email'] = res.user.email
-                flash('Bienvenido', 'success')
-                return redirect(url_for('dashboard'))
-
+            session['user_id'] = res.user.id
+            return redirect(url_for('dashboard'))
         except Exception as e:
-            logger.error(e)
-            flash(str(e), 'danger')
-
+            flash('Error login', 'danger')
     return render_template('login.html')
-
 
 @app.route('/logout')
 def logout():
     session.clear()
-    flash('Sesión cerrada', 'info')
     return redirect(url_for('login'))
 
-# ================================================================
+# ======================================================
 # DASHBOARD
-# ================================================================
+# ======================================================
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    user_id = str(session['user_id'])
-
     try:
+        user_id = session['user_id']
+        hoy = datetime.now()
+        hace_7 = (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
+
         gastos = supabase.table('gastos').select('*').eq('user_id', user_id).execute().data or []
         ingresos = supabase.table('ingresos').select('*').eq('user_id', user_id).execute().data or []
 
-        hoy = datetime.now()
-        hace_7_dias = (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
-        inicio_mes = hoy.replace(day=1).strftime('%Y-%m-%d')
+        total_gastos = sum(float(g['monto']) for g in gastos)
+        total_ingresos = sum(float(i['monto']) for i in ingresos)
 
-        total_gastos = sum(float(g.get('monto', 0)) for g in gastos)
-        total_ingresos = sum(float(i.get('monto', 0)) for i in ingresos)
+        weekly_income = sum(float(i['monto']) for i in ingresos if i['fecha'] >= hace_7)
+        weekly_exp = sum(float(g['monto']) for g in gastos if g['fecha'] >= hace_7)
 
-        weekly_exp = sum(float(g.get('monto', 0)) for g in gastos if g.get('fecha', '') >= hace_7_dias)
-        weekly_income = sum(float(i.get('monto', 0)) for i in ingresos if i.get('fecha', '') >= hace_7_dias)
+        # PARA CHARTS
+        gastos_cat = {}
+        for g in gastos:
+            cat = g['categoria']
+            gastos_cat[cat] = gastos_cat.get(cat, 0) + float(g['monto'])
 
-        monthly_exp = sum(float(g.get('monto', 0)) for g in gastos if g.get('fecha', '') >= inicio_mes)
-        monthly_income = sum(float(i.get('monto', 0)) for i in ingresos if i.get('fecha', '') >= inicio_mes)
+        ingresos_cat = {}
+        for i in ingresos:
+            cat = i['categoria']
+            ingresos_cat[cat] = ingresos_cat.get(cat, 0) + float(i['monto'])
 
-        return render_template('dashboard.html',
-                               weekly_exp=weekly_exp,
-                               weekly_income=weekly_income,
-                               monthly_exp=monthly_exp,
-                               monthly_income=monthly_income,
-                               total_exp=total_gastos,
-                               total_income=total_ingresos,
-                               total_balance=total_ingresos - total_gastos,
-                               today=hoy.strftime('%Y-%m-%d'),
-                               active_page='dashboard')
-        gastos_por_cat = {}
-            for g in gastos:
-                cat = g.get('categoria', 'Otros')
-                gastos_por_cat[cat] = gastos_por_cat.get(cat, 0) + float(g.get('monto', 0))
-            
-            ingresos_por_cat = {}
-            for i in ingresos:
-                cat = i.get('categoria', 'Otros')
-                ingresos_por_cat[cat] = ingresos_por_cat.get(cat, 0) + float(i.get('monto', 0))
-    
+        return render_template(
+            'dashboard.html',
+            total_income=total_ingresos,
+            total_exp=total_gastos,
+            total_balance=total_ingresos - total_gastos,
+            weekly_income=weekly_income,
+            weekly_exp=weekly_exp,
+            gastos_data=list(gastos_cat.values()),
+            gastos_labels=list(gastos_cat.keys()),
+            ingresos_data=list(ingresos_cat.values()),
+            ingresos_labels=list(ingresos_cat.keys())
+        )
+
     except Exception as e:
         logger.error(e)
-        return render_template('dashboard.html',
-                                weekly_exp=0,
-                                weekly_income=0,
-                                monthly_exp=0,
-                                monthly_income=0,
-                                total_exp=0,
-                                total_income=0,
-                                total_balance=0,
-                                today=datetime.now().strftime('%Y-%m-%d'),
-                                active_page='dashboard'
-                                gastos_labels=list(gastos_por_cat.keys()),
-                                gastos_data=list(gastos_por_cat.values()),
-                                ingresos_labels=list(ingresos_por_cat.keys()),
-                                ingresos_data=list(ingresos_por_cat.values()), 
-)
-@app.route('/exportar_gastos')
-@login_required
-def exportar_gastos():
-    user_id = str(session['user_id'])
+        return "Error dashboard"
 
-    gastos = supabase.table('gastos').select('*').eq('user_id', user_id).execute().data or []
-
-    df = pd.DataFrame(gastos)
-
-    output = io.BytesIO()
-    df.to_excel(output, index=False)
-    output.seek(0)
-
-    return send_file(output,
-                     download_name="gastos.xlsx",
-                     as_attachment=True)
-# ================================================================
+# ======================================================
 # GASTOS
-# ================================================================
+# ======================================================
 
 @app.route('/expenses')
 @login_required
 def expenses():
-    user_id = str(session['user_id'])
+    user_id = session['user_id']
+    gastos = supabase.table('gastos').select('*').eq('user_id', user_id).execute().data or []
+    return render_template('expenses.html', expenses=gastos)
 
-    try:
-        gastos = supabase.table('gastos').select('*').eq('user_id', user_id).execute().data or []
-        categorias = supabase.table('categorias_gastos').select('nombre').execute().data or []
-
-        return render_template('expenses.html',
-                               gastos=gastos,  # 🔥 nombre corregido
-                               categorias=categorias,
-                               today=datetime.now().strftime('%Y-%m-%d'),
-                               active_page='expenses')
-
-    except Exception as e:
-        logger.error(e)
-        return render_template('expenses.html',
-                               gastos=[],
-                               categorias=[],
-                               today=datetime.now().strftime('%Y-%m-%d'),
-                               active_page='expenses')
-
-
-@app.route('/agregar_gasto', methods=['POST'])
+@app.route('/add_expense', methods=['POST'])
 @login_required
-def agregar_gasto():
-    user_id = str(session['user_id'])
-
-    try:
-        supabase.table('gastos').insert({
-            'user_id': user_id,
-            'fecha': request.form.get('fecha'),
-            'monto': float(request.form.get('monto') or 0),
-            'categoria': request.form.get('categoria'),
-            'descripcion': request.form.get('descripcion', '')
-        }).execute()
-
-        flash('Gasto agregado', 'success')
-
-    except Exception as e:
-        logger.error(e)
-        flash('Error al agregar gasto', 'danger')
-
+def add_expense():
+    supabase.table('gastos').insert({
+        "user_id": session['user_id'],
+        "fecha": request.form['fecha'],
+        "monto": float(request.form['monto']),
+        "categoria": request.form['categoria'],
+        "descripcion": request.form['descripcion']
+    }).execute()
     return redirect(url_for('expenses'))
-    @app.route('/editar_gasto/<int:id>', methods=['POST'])
-    @login_required
-    def editar_gasto(id):
-        try:
-            supabase.table('gastos').update({
-                'fecha': request.form.get('fecha'),
-                'monto': float(request.form.get('monto')),
-                'categoria': request.form.get('categoria'),
-                'descripcion': request.form.get('descripcion')
-            }).eq('id', id).execute()
-    
-            flash('Gasto actualizado', 'success')
-    
-        except Exception as e:
-            logger.error(e)
-            flash('Error al editar', 'danger')
-    
-        return redirect(url_for('expenses'))
-        @app.route('/eliminar_gasto/<int:id>')
-        @login_required
-        def eliminar_gasto(id):
-            try:
-                supabase.table('gastos').delete().eq('id', id).execute()
-                flash('Gasto eliminado', 'success')
-            except Exception as e:
-                logger.error(e)
-                flash('Error al eliminar', 'danger')
-        
-            return redirect(url_for('expenses'))
 
-# ================================================================
-# INGRESOS
-# ================================================================
+@app.route('/delete_expense/<int:id>')
+@login_required
+def delete_expense(id):
+    supabase.table('gastos').delete().eq('id', id).execute()
+    flash('Gasto eliminado', 'success')
+    return redirect(url_for('expenses'))
+
+@app.route('/edit_expense/<int:id>', methods=['POST'])
+@login_required
+def edit_expense(id):
+    supabase.table('gastos').update({
+        "fecha": request.form['fecha'],
+        "monto": float(request.form['monto']),
+        "categoria": request.form['categoria'],
+        "descripcion": request.form['descripcion']
+    }).eq('id', id).execute()
+
+    flash('Gasto actualizado', 'success')
+    return redirect(url_for('expenses'))
+
+@app.route('/export_expenses')
+@login_required
+def export_expenses():
+    data = supabase.table('gastos').select('*').eq('user_id', session['user_id']).execute().data
+
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    return send_file(output, download_name="gastos.xlsx", as_attachment=True)
+
+# ======================================================
+# INGRESOS (MISMO SISTEMA)
+# ======================================================
 
 @app.route('/incomes')
 @login_required
 def incomes():
-    user_id = str(session['user_id'])
+    ingresos = supabase.table('ingresos').select('*').eq('user_id', session['user_id']).execute().data or []
+    return render_template('incomes.html', incomes=ingresos)
 
-    try:
-        ingresos = supabase.table('ingresos').select('*').eq('user_id', user_id).execute().data or []
-        categorias = supabase.table('categorias_ingresos').select('nombre').execute().data or []
-
-        return render_template('incomes.html',
-                               ingresos=ingresos,  # 🔥 nombre corregido
-                               categorias=categorias,
-                               today=datetime.now().strftime('%Y-%m-%d'),
-                               active_page='incomes')
-
-    except Exception as e:
-        logger.error(e)
-        return render_template('incomes.html',
-                               ingresos=[],
-                               categorias=[],
-                               today=datetime.now().strftime('%Y-%m-%d'),
-                               active_page='incomes')
-
-
-@app.route('/agregar_ingreso', methods=['POST'])
+@app.route('/add_income', methods=['POST'])
 @login_required
-def agregar_ingreso():
-    user_id = str(session['user_id'])
-
-    try:
-        supabase.table('ingresos').insert({
-            'user_id': user_id,
-            'fecha': request.form.get('fecha'),
-            'monto': float(request.form.get('monto') or 0),
-            'categoria': request.form.get('categoria'),
-            'descripcion': request.form.get('descripcion', '')
-        }).execute()
-
-        flash('Ingreso agregado', 'success')
-
-    except Exception as e:
-        logger.error(e)
-        flash('Error al agregar ingreso', 'danger')
-
+def add_income():
+    supabase.table('ingresos').insert({
+        "user_id": session['user_id'],
+        "fecha": request.form['fecha'],
+        "monto": float(request.form['monto']),
+        "categoria": request.form['categoria'],
+        "descripcion": request.form['descripcion']
+    }).execute()
     return redirect(url_for('incomes'))
 
-# ================================================================
-# RUTAS AUX (IMPORTANTE PARA TUS HTML)
-# ================================================================
-
-@app.route('/ver_gastos')
+@app.route('/delete_income/<int:id>')
 @login_required
-def ver_gastos():
-    return redirect(url_for('expenses'))
-
-
-@app.route('/ver_ingresos')
-@login_required
-def ver_ingresos():
+def delete_income(id):
+    supabase.table('ingresos').delete().eq('id', id).execute()
+    flash('Ingreso eliminado', 'success')
     return redirect(url_for('incomes'))
 
-# ================================================================
-# RUN
-# ================================================================
+@app.route('/edit_income/<int:id>', methods=['POST'])
+@login_required
+def edit_income(id):
+    supabase.table('ingresos').update({
+        "fecha": request.form['fecha'],
+        "monto": float(request.form['monto']),
+        "categoria": request.form['categoria'],
+        "descripcion": request.form['descripcion']
+    }).eq('id', id).execute()
+
+    flash('Ingreso actualizado', 'success')
+    return redirect(url_for('incomes'))
+
+@app.route('/export_incomes')
+@login_required
+def export_incomes():
+    data = supabase.table('ingresos').select('*').eq('user_id', session['user_id']).execute().data
+
+    df = pd.DataFrame(data)
+    output = BytesIO()
+    df.to_excel(output, index=False)
+    output.seek(0)
+
+    return send_file(output, download_name="ingresos.xlsx", as_attachment=True)
+
+# ======================================================
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True)
