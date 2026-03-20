@@ -1,433 +1,136 @@
-import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-from supabase import create_client, Client
-from functools import wraps
-from datetime import timedelta, datetime
-from dotenv import load_dotenv
-import logging
+"""
+Gonzalo Pago - Versión FINAL para Render + Supabase
+Última actualización: marzo 2026
+"""
 
-# Cargar variables de entorno
+import os
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from supabase import create_client, Client
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+
 load_dotenv()
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'clave-super-secreta-cambiar-en-produccion')
+app.secret_key = os.getenv('SECRET_KEY', 'clave-secreta-temporal')
 
-# Configuración de sesión
-app.config['SESSION_COOKIE_SECURE'] = False
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_PERMANENT'] = True
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-
-# Configuración Supabase
+# Supabase
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Faltan variables de entorno de Supabase")
+    raise ValueError("Faltan SUPABASE_URL o SUPABASE_KEY en variables de entorno")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ========== FUNCIONES DE AYUDA ==========
+
+# ================================================================
+# MIDDLEWARE - Login requerido
+# ================================================================
+
 def login_required(f):
-    @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            flash('Por favor inicia sesión', 'warning')
+            flash('Inicia sesión primero', 'warning')
             return redirect(url_for('login'))
         return f(*args, **kwargs)
+    decorated_function.__name__ = f.__name__
     return decorated_function
 
-def get_today():
-    return datetime.now().strftime('%Y-%m-%d')
 
-def safe_float(value, default=0):
-    try:
-        return float(value) if value not in (None, '') else default
-    except (ValueError, TypeError):
-        return default
-
-# ========== RUTAS DE AUTENTICACIÓN ==========
-@app.route('/')
-def index():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
-    
-    if request.method == 'POST':
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '').strip()
-        
-        if not email or not password:
-            flash('Email y contraseña requeridos', 'danger')
-            return render_template('login.html')
-        
-        try:
-            response = supabase.auth.sign_in_with_password({
-                "email": email,
-                "password": password
-            })
-            
-            if response and response.user:
-                session.clear()
-                session['user_id'] = response.user.id
-                session['email'] = response.user.email
-                session['username'] = response.user.user_metadata.get('username', email.split('@')[0])
-                session.permanent = True
-                
-                logger.info(f"Login exitoso para: {email}")
-                flash('¡Bienvenido!', 'success')
-                return redirect(url_for('dashboard'))
-            else:
-                flash('Credenciales incorrectas', 'danger')
-                
-        except Exception as e:
-            logger.error(f"Error en login: {e}")
-            flash('Error en el servidor', 'danger')
-        
-        return render_template('login.html')
-    
-    return render_template('login.html')
+# ================================================================
+# RUTAS AUTENTICACIÓN
+# ================================================================
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
-        
+
         if not email or not password:
             flash('Email y contraseña requeridos', 'danger')
             return render_template('register.html')
-        
-        if len(password) < 4:
-            flash('La contraseña debe tener al menos 4 caracteres', 'danger')
-            return render_template('register.html')
-        
+
         try:
             response = supabase.auth.sign_up({
                 "email": email,
-                "password": password,
-                "options": {
-                    "data": {"username": email.split('@')[0]}
-                }
+                "password": password
             })
-            
-            if response and response.user:
-                logger.info(f"Registro exitoso: {email}")
-                flash('Registro exitoso. Ahora puedes iniciar sesión.', 'success')
+            if response.user:
+                flash('Registro exitoso. Inicia sesión.', 'success')
                 return redirect(url_for('login'))
             else:
-                flash('Error en registro', 'danger')
-                
+                flash('Error al registrar', 'danger')
         except Exception as e:
-            logger.error(f"Error en registro: {e}")
-            flash(f'Error: {str(e)}', 'danger')
-        
-        return render_template('register.html')
-    
+            flash(str(e), 'danger')
+
     return render_template('register.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+
+        try:
+            response = supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            if response.user:
+                session['user_id'] = response.user.id
+                session['email'] = response.user.email
+                flash('Sesión iniciada', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Credenciales incorrectas', 'danger')
+        except Exception as e:
+            flash(str(e), 'danger')
+
+    return render_template('login.html')
+
 
 @app.route('/logout')
 def logout():
-    try:
-        supabase.auth.sign_out()
-    except:
-        pass
     session.clear()
     flash('Sesión cerrada', 'info')
     return redirect(url_for('login'))
 
-# ========== RUTAS DEL DASHBOARD ==========
+
+# ================================================================
+# DASHBOARD (versión mínima para que Render arranque)
+# ================================================================
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    try:
-        user_id = session['user_id']
-        hoy = datetime.now()
-        hace_7_dias = (hoy - timedelta(days=7)).strftime('%Y-%m-%d')
-        inicio_mes = hoy.replace(day=1).strftime('%Y-%m-%d')
-        
-        # Obtener gastos
-        gastos_result = supabase.table('gastos')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .order('fecha', desc=True)\
-            .execute()
-        
-        # Obtener ingresos
-        ingresos_result = supabase.table('ingresos')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .order('fecha', desc=True)\
-            .execute()
-        
-        gastos = gastos_result.data if gastos_result.data else []
-        ingresos = ingresos_result.data if ingresos_result.data else []
-        
-        # Calcular totales
-        total_gastos = sum(safe_float(g.get('monto', 0)) for g in gastos)
-        total_ingresos = sum(safe_float(i.get('monto', 0)) for i in ingresos)
-        
-        # Calcular semanales
-        gastos_semana = sum(safe_float(g.get('monto', 0)) for g in gastos 
-                           if g.get('fecha', '')[:10] >= hace_7_dias)
-        ingresos_semana = sum(safe_float(i.get('monto', 0)) for i in ingresos 
-                            if i.get('fecha', '')[:10] >= hace_7_dias)
-        
-        # Calcular mensuales
-        gastos_mes = sum(safe_float(g.get('monto', 0)) for g in gastos 
-                        if g.get('fecha', '')[:10] >= inicio_mes)
-        ingresos_mes = sum(safe_float(i.get('monto', 0)) for i in ingresos 
-                         if i.get('fecha', '')[:10] >= inicio_mes)
-        
-        # Preparar datos para gráficos
-        gastos_por_categoria = {}
-        for g in gastos:
-            cat = g.get('categoria', 'Otros')
-            gastos_por_categoria[cat] = gastos_por_categoria.get(cat, 0) + safe_float(g.get('monto', 0))
-        
-        ingresos_por_categoria = {}
-        for i in ingresos:
-            cat = i.get('categoria', 'Otros')
-            ingresos_por_categoria[cat] = ingresos_por_categoria.get(cat, 0) + safe_float(i.get('monto', 0))
-        
-        return render_template('dashboard.html',
-                             weekly_exp=gastos_semana,
-                             weekly_income=ingresos_semana,
-                             monthly_exp=gastos_mes,
-                             monthly_income=ingresos_mes,
-                             total_exp=total_gastos,
-                             total_income=total_ingresos,
-                             total_balance=total_ingresos - total_gastos,
-                             gastos_data=list(gastos_por_categoria.values()),
-                             gastos_labels=list(gastos_por_categoria.keys()),
-                             ingresos_data=list(ingresos_por_categoria.values()),
-                             ingresos_labels=list(ingresos_por_categoria.keys()),
-                             today=get_today())
-    
-    except Exception as e:
-        logger.error(f"Error en dashboard: {e}")
-        flash('Error al cargar el dashboard', 'danger')
-        return render_template('dashboard.html',
-                             weekly_exp=0,
-                             weekly_income=0,
-                             monthly_exp=0,
-                             monthly_income=0,
-                             total_exp=0,
-                             total_income=0,
-                             total_balance=0,
-                             gastos_data=[],
-                             gastos_labels=[],
-                             ingresos_data=[],
-                             ingresos_labels=[],
-                             today=get_today())
+    return render_template('dashboard.html', active_page='dashboard')
 
-# ========== RUTAS DE GASTOS (SOLO UNA VEZ) ==========
-@app.route('/gastos')
+
+# ================================================================
+# RUTAS BÁSICAS (puedes expandir después)
+# ================================================================
+
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
+
+
+@app.route('/expenses')
 @login_required
-def ver_gastos():
-    try:
-        user_id = session['user_id']
-        
-        result = supabase.table('gastos')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .order('fecha', desc=True)\
-            .execute()
-        
-        gastos = result.data if result.data else []
-        
-        categorias = [
-            {'id': 'Alimentación', 'nombre': 'Alimentación'},
-            {'id': 'Transporte', 'nombre': 'Transporte'},
-            {'id': 'Vivienda', 'nombre': 'Vivienda'},
-            {'id': 'Entretenimiento', 'nombre': 'Entretenimiento'},
-            {'id': 'Salud', 'nombre': 'Salud'},
-            {'id': 'Educación', 'nombre': 'Educación'},
-            {'id': 'Servicios', 'nombre': 'Servicios'},
-            {'id': 'Otros', 'nombre': 'Otros'}
-        ]
-        
-        return render_template('expenses.html', 
-                             gastos=gastos,
-                             categorias=categorias,
-                             today=get_today())
-    
-    except Exception as e:
-        logger.error(f"Error al cargar gastos: {e}")
-        flash('Error al cargar los gastos', 'danger')
-        return render_template('expenses.html', 
-                             gastos=[],
-                             categorias=[],
-                             today=get_today())
+def expenses():
+    return render_template('expenses.html', active_page='expenses')
 
-@app.route('/gastos/agregar', methods=['POST'])
+
+@app.route('/incomes')
 @login_required
-def agregar_gasto():
-    try:
-        fecha = request.form.get('fecha', get_today())
-        monto = safe_float(request.form.get('monto', 0))
-        categoria = request.form.get('categoria', 'Otros')
-        descripcion = request.form.get('descripcion', '').strip()
-        
-        if monto <= 0:
-            flash('El monto debe ser mayor a 0', 'danger')
-            return redirect(url_for('ver_gastos'))
-        
-        nuevo_gasto = {
-            'user_id': session['user_id'],
-            'fecha': fecha,
-            'monto': monto,
-            'categoria': categoria,
-            'descripcion': descripcion
-        }
-        
-        result = supabase.table('gastos').insert(nuevo_gasto).execute()
-        
-        if result.data:
-            flash('Gasto agregado correctamente', 'success')
-        else:
-            flash('Error al agregar gasto', 'danger')
-            
-    except Exception as e:
-        logger.error(f"Error al agregar gasto: {e}")
-        flash(f'Error: {str(e)}', 'danger')
-    
-    return redirect(url_for('ver_gastos'))
+def incomes():
+    return render_template('incomes.html', active_page='incomes')
 
-@app.route('/gastos/eliminar/<gasto_id>')
-@login_required
-def eliminar_gasto(gasto_id):
-    try:
-        result = supabase.table('gastos')\
-            .delete()\
-            .eq('id', gasto_id)\
-            .eq('user_id', session['user_id'])\
-            .execute()
-        
-        if result.data:
-            flash('Gasto eliminado', 'info')
-        else:
-            flash('No se pudo eliminar el gasto', 'danger')
-            
-    except Exception as e:
-        logger.error(f"Error al eliminar gasto: {e}")
-        flash('Error al eliminar gasto', 'danger')
-    
-    return redirect(url_for('ver_gastos'))
-
-# ========== RUTAS DE INGRESOS (SOLO UNA VEZ) ==========
-@app.route('/ingresos')
-@login_required
-def ver_ingresos():
-    try:
-        user_id = session['user_id']
-        
-        result = supabase.table('ingresos')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .order('fecha', desc=True)\
-            .execute()
-        
-        ingresos = result.data if result.data else []
-        
-        categorias = [
-            {'id': 'Salario', 'nombre': 'Salario'},
-            {'id': 'Freelance', 'nombre': 'Freelance'},
-            {'id': 'Inversiones', 'nombre': 'Inversiones'},
-            {'id': 'Negocio', 'nombre': 'Negocio'},
-            {'id': 'Regalo', 'nombre': 'Regalo'},
-            {'id': 'Otros', 'nombre': 'Otros'}
-        ]
-        
-        return render_template('incomes.html', 
-                             ingresos=ingresos,
-                             categorias=categorias,
-                             today=get_today())
-    
-    except Exception as e:
-        logger.error(f"Error al cargar ingresos: {e}")
-        flash('Error al cargar los ingresos', 'danger')
-        return render_template('incomes.html', 
-                             ingresos=[],
-                             categorias=[],
-                             today=get_today())
-
-@app.route('/ingresos/agregar', methods=['POST'])
-@login_required
-def agregar_ingreso():
-    try:
-        fecha = request.form.get('fecha', get_today())
-        monto = safe_float(request.form.get('monto', 0))
-        categoria = request.form.get('categoria', 'Otros')
-        descripcion = request.form.get('descripcion', '').strip()
-        
-        if monto <= 0:
-            flash('El monto debe ser mayor a 0', 'danger')
-            return redirect(url_for('ver_ingresos'))
-        
-        nuevo_ingreso = {
-            'user_id': session['user_id'],
-            'fecha': fecha,
-            'monto': monto,
-            'categoria': categoria,
-            'descripcion': descripcion
-        }
-        
-        result = supabase.table('ingresos').insert(nuevo_ingreso).execute()
-        
-        if result.data:
-            flash('Ingreso agregado correctamente', 'success')
-        else:
-            flash('Error al agregar ingreso', 'danger')
-            
-    except Exception as e:
-        logger.error(f"Error al agregar ingreso: {e}")
-        flash(f'Error: {str(e)}', 'danger')
-    
-    return redirect(url_for('ver_ingresos'))
-
-@app.route('/ingresos/eliminar/<ingreso_id>')
-@login_required
-def eliminar_ingreso(ingreso_id):
-    try:
-        result = supabase.table('ingresos')\
-            .delete()\
-            .eq('id', ingreso_id)\
-            .eq('user_id', session['user_id'])\
-            .execute()
-        
-        if result.data:
-            flash('Ingreso eliminado', 'info')
-        else:
-            flash('No se pudo eliminar el ingreso', 'danger')
-            
-    except Exception as e:
-        logger.error(f"Error al eliminar ingreso: {e}")
-        flash('Error al eliminar ingreso', 'danger')
-    
-    return redirect(url_for('ver_ingresos'))
-
-# ========== RUTAS DE DEPURACIÓN ==========
-@app.route('/debug/session')
-def debug_session():
-    if app.debug:
-        return jsonify({
-            'session': dict(session),
-            'user_id': session.get('user_id'),
-            'email': session.get('email')
-        })
-    return jsonify({'error': 'No disponible'}), 404
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
